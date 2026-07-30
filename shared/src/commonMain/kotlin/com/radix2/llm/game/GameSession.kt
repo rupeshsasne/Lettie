@@ -48,20 +48,41 @@ class GameSession(
     var childWordCount by mutableStateOf(0)
         private set
 
+    /**
+     * Remaining ms on the child's turn timer. Lives on the session so leaving to a
+     * word detail and coming back resumes the same countdown (does not reset).
+     */
+    var childTimeLeftMs by mutableStateOf(difficulty.turnSeconds * 1000)
+        private set
+
+    /** [chain.size] for which [childTimeLeftMs] was last armed — avoids re-arming on UI resume. */
+    private var timerArmedForChainSize: Int = -1
+
     private val usedIds = mutableSetOf<String>()
+
+    /** True after [start] has been called — survives UI leave/return without resetting. */
+    var hasBegun: Boolean = false
+        private set
 
     /** Ids of words already played this game (read-only). */
     val playedIds: Set<String> get() = usedIds
 
     val lastWord: Word? get() = chain.lastOrNull()?.word
 
-    /** Begin the game: either Lettie opens with a word or the child is asked to start. */
+    /**
+     * Begin the game once. Safe to call again after navigating away and back —
+     * subsequent calls are no-ops so progress is preserved.
+     */
     fun start(): Word? {
+        if (hasBegun) return lastWord
+        hasBegun = true
         chain.clear()
         usedIds.clear()
         status = GameStatus.PLAYING
         retriesLeft = difficulty.retries
         childWordCount = 0
+        timerArmedForChainSize = -1
+        childTimeLeftMs = difficulty.turnSeconds * 1000
         return if (lettieStarts) {
             val opener = pickLettieOpener()
             if (opener != null) {
@@ -73,6 +94,12 @@ class GameSession(
             whoseTurn = Speaker.CHILD
             null
         }
+    }
+
+    /** Reset and start a fresh match (Play again). */
+    fun restart(): Word? {
+        hasBegun = false
+        return start()
     }
 
     private fun randomStartLetter(): Char {
@@ -100,6 +127,23 @@ class GameSession(
         requiredLetter = word.lastLetter
         if (speaker == Speaker.CHILD) childWordCount++
         whoseTurn = if (speaker == Speaker.CHILD) Speaker.LETTIE else Speaker.CHILD
+        // New child turn begins after Lettie (or opener) plays — arm a fresh timer once.
+        if (whoseTurn == Speaker.CHILD) {
+            armChildTimerIfNeeded()
+        }
+    }
+
+    /** Arm a full turn timer for the current chain length, only once per turn. */
+    fun armChildTimerIfNeeded() {
+        if (timerArmedForChainSize == chain.size) return
+        timerArmedForChainSize = chain.size
+        childTimeLeftMs = difficulty.turnSeconds * 1000
+    }
+
+    /** Tick the child timer; no-op if already expired. */
+    fun consumeChildTimer(ms: Int) {
+        if (childTimeLeftMs <= 0) return
+        childTimeLeftMs = (childTimeLeftMs - ms).coerceAtLeast(0)
     }
 
     /** Process the child's spoken attempt. On success, advances the turn to Lettie. */

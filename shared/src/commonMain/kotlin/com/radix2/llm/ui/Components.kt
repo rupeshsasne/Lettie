@@ -23,6 +23,7 @@ fun AppScaffold(
     title: String,
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
+    floatingActionButton: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
@@ -42,6 +43,7 @@ fun AppScaffold(
                 actions = actions,
             )
         },
+        floatingActionButton = floatingActionButton,
         content = content,
     )
 }

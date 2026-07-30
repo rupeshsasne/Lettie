@@ -56,8 +56,9 @@ data class Geo(
 )
 
 /**
- * A single word entry. [imageRef] is reserved for real photographs (see PRD §8);
- * [emoji] is the current visual used for offline, zero-size rendering.
+ * A single word entry.
+ * [imageUrl] is an optional direct photograph URL (loaded at runtime).
+ * When null, [WordImages] resolves a Wikipedia thumbnail URL for [wikiTitle] / [name].
  */
 data class Word(
     val id: String,
@@ -69,7 +70,8 @@ data class Word(
     val facts: List<String> = emptyList(),
     val aliases: List<String> = emptyList(),
     val geo: Geo? = null,
-    val imageRef: String? = null,
+    val imageUrl: String? = null,
+    val wikiTitle: String? = null,
 ) {
     /** Lowercase letters only, used for matching. */
     val normalized: String get() = name.lowercase().filter { it.isLetter() }

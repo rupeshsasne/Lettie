@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -49,11 +51,18 @@ fun LibraryScreen(
     onOpenWord: (Word) -> Unit,
     onBack: () -> Unit,
 ) {
-    var selected by remember { mutableStateOf(initialCategory) }
-    var showFavorites by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
+    var selectedName by rememberSaveable {
+        mutableStateOf(initialCategory?.name)
+    }
+    var showFavorites by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val searchListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
 
-    val categories = if (selected == null) Category.entries.toList() else listOf(selected!!)
+    val selected = selectedName?.let { name ->
+        Category.entries.find { it.name == name }
+    }
+    val categories = if (selected == null) Category.entries.toList() else listOf(selected)
     val trimmed = query.trim()
 
     AppScaffold(title = "Words", onBack = onBack) { innerPadding ->
@@ -87,14 +96,14 @@ fun LibraryScreen(
                 item {
                     FilterChip(
                         selected = selected == null && !showFavorites,
-                        onClick = { selected = null; showFavorites = false },
+                        onClick = { selectedName = null; showFavorites = false },
                         label = { Text("All") },
                     )
                 }
                 items(Category.entries.toList()) { cat ->
                     FilterChip(
                         selected = selected == cat,
-                        onClick = { selected = cat; showFavorites = false },
+                        onClick = { selectedName = cat.name; showFavorites = false },
                         label = { Text(cat.displayName) },
                     )
                 }
@@ -119,7 +128,7 @@ fun LibraryScreen(
                         },
                     )
                 } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), state = searchListState) {
                         items(filtered, key = { it.id }) { word ->
                             WordRow(word, favorites, voice, onOpenWord)
                             HorizontalDivider()
@@ -127,8 +136,8 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                val sections = remember(selected) { repo.alphabetical(categories) }
-                LazyColumn(Modifier.fillMaxSize()) {
+                val sections = remember(selectedName) { repo.alphabetical(categories) }
+                LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
                     sections.forEach { (letter, words) ->
                         item(key = "header_$letter") {
                             Text(
@@ -160,7 +169,9 @@ private fun WordRow(
     ListItem(
         headlineContent = { Text(word.name) },
         supportingContent = { Text(word.category.displayName) },
-        leadingContent = { Text(word.emoji, fontSize = 34.sp) },
+        leadingContent = {
+            WordImage(word = word, size = 48.dp, emojiFallbackSize = 28.sp)
+        },
         trailingContent = {
             Row {
                 IconButton(onClick = { favorites.toggle(word.id) }) {

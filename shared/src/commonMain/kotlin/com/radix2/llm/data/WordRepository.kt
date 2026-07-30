@@ -48,11 +48,11 @@ class WordRepository(
             it.id !in excludingIds
     }
 
-    /** Find a curated word matching spoken text within [categories]. */
+    /** Find a curated word matching spoken text within [categories]. Exact match wins over fuzzy. */
     fun findSpoken(
         spoken: String,
         categories: Collection<Category>,
-    ): Word? = words.firstOrNull { it.category in categories && WordMatching.matches(spoken, it) }
+    ): Word? = WordMatching.bestMatch(spoken, words.filter { it.category in categories })
 
     /** Best-guess candidates for a low-confidence spoken input (for confirm chips). */
     fun guesses(
@@ -60,11 +60,18 @@ class WordRepository(
         categories: Collection<Category>,
         limit: Int = 3,
     ): List<Word> {
-        val s = spoken.lowercase().filter { it.isLetter() }
+        val s = WordMatching.compact(spoken)
         if (s.isEmpty()) return emptyList()
         return words.asSequence()
             .filter { it.category in categories }
-            .map { it to WordMatching.levenshtein(s, it.name.lowercase().filter { c -> c.isLetter() }) }
+            .map { word ->
+                val targets = buildList {
+                    add(word.name)
+                    addAll(word.aliases)
+                }.map { WordMatching.compact(it) }
+                val dist = targets.minOf { WordMatching.levenshtein(s, it) }
+                word to dist
+            }
             .sortedBy { it.second }
             .take(limit)
             .map { it.first }

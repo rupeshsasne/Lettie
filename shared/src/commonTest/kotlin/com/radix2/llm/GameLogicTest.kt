@@ -27,6 +27,23 @@ class GameLogicTest {
     }
 
     @Test
+    fun eggplantDoesNotCollideWithElephant() {
+        assertTrue(WordMatching.matches("eggplant", repo.byId("vegetable_eggplant")!!))
+        assertTrue(!WordMatching.matches("eggplant", repo.byId("animal_elephant")!!))
+        assertEquals("vegetable_eggplant", repo.findSpoken("eggplant", Category.entries)!!.id)
+        assertEquals("vegetable_eggplant", repo.findSpoken("brinjal", Category.entries)!!.id)
+    }
+
+    @Test
+    fun tomatoRecognisesIndianAliases() {
+        val tomato = assertNotNull(repo.byId("vegetable_tomato"))
+        for (alias in listOf("tomato", "tamatar", "tomoto", "tamato")) {
+            assertEquals("vegetable_tomato", repo.findSpoken(alias, Category.entries)!!.id, alias)
+            assertTrue(WordMatching.matches(alias, tomato), alias)
+        }
+    }
+
+    @Test
     fun fuzzyMatchingToleratesMisspellings() {
         val elephant = repo.byId("animal_elephant")!!
         assertTrue(WordMatching.matches("elefant", elephant))

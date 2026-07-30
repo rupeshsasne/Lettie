@@ -1,6 +1,8 @@
 package com.radix2.llm.voice
 
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /**
  * Voice abstraction so game/UI code stays platform-agnostic. Android provides the
@@ -26,6 +28,23 @@ interface VoiceController {
     fun stopListening()
 
     fun dispose()
+}
+
+/** Speak and suspend until TTS finishes (or is cancelled). */
+suspend fun VoiceController.speakAwait(text: String) {
+    suspendCancellableCoroutine { cont ->
+        speak(text) {
+            if (cont.isActive) cont.resume(Unit)
+        }
+        cont.invokeOnCancellation { stopSpeaking() }
+    }
+}
+
+/** Wait until the engine is no longer speaking (e.g. after a fire-and-forget speak). */
+suspend fun VoiceController.awaitSilent(pollMs: Long = 50L) {
+    while (isSpeaking) {
+        kotlinx.coroutines.delay(pollMs)
+    }
 }
 
 @Composable

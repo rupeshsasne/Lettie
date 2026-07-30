@@ -8,9 +8,9 @@ import com.radix2.llm.domain.Word
 /**
  * Curated, offline, child-appropriate word dataset.
  *
- * Visuals currently use emoji ([Word.emoji]) for zero-size offline rendering; [Word.imageRef]
- * is reserved for real photographs (PRD §8). To upgrade, populate imageRef and load it in
- * the image composable — no other code changes required.
+ * Photographs are loaded at runtime from URLs ([Word.imageUrl] or a Wikipedia
+ * thumbnail resolved by [WordImages]) — nothing heavy is bundled in the APK.
+ * [Word.emoji] is the offline / loading fallback.
  *
  * Difficulty tags drive Lettie's word choices (Easy = simple/common, Hard = rare/tough letters).
  */
@@ -25,6 +25,8 @@ object WordData {
         facts: List<String> = emptyList(),
         aliases: List<String> = emptyList(),
         geo: Geo? = null,
+        imageUrl: String? = null,
+        wikiTitle: String? = null,
     ): Word = Word(
         id = category.name.lowercase() + "_" + name.lowercase().filter { it.isLetterOrDigit() },
         name = name,
@@ -35,6 +37,8 @@ object WordData {
         facts = facts,
         aliases = aliases,
         geo = geo,
+        imageUrl = imageUrl,
+        wikiTitle = wikiTitle,
     )
 
     private val animals = listOf(
@@ -192,7 +196,12 @@ object WordData {
         w("Cauliflower", Category.VEGETABLE, "\uD83E\uDD66", difficulty = Difficulty.MEDIUM),
         w("Corn", Category.VEGETABLE, "\uD83C\uDF3D", facts = listOf("Corn grows on a cob.")),
         w("Cucumber", Category.VEGETABLE, "\uD83E\uDD52", facts = listOf("Cucumbers are cool and crunchy.")),
-        w("Eggplant", Category.VEGETABLE, "\uD83C\uDF46", aliases = listOf("brinjal", "aubergine")),
+        w(
+            "Eggplant",
+            Category.VEGETABLE,
+            "\uD83C\uDF46",
+            aliases = listOf("brinjal", "aubergine", "baingan", "baigan"),
+        ),
         w("Garlic", Category.VEGETABLE, "\uD83E\uDDC4", difficulty = Difficulty.MEDIUM),
         w("Ginger", Category.VEGETABLE, "\uD83E\uDDC4", difficulty = Difficulty.MEDIUM),
         w("Lettuce", Category.VEGETABLE, "\uD83E\uDD6C", difficulty = Difficulty.MEDIUM),
@@ -203,7 +212,21 @@ object WordData {
         w("Pumpkin", Category.VEGETABLE, "\uD83C\uDF83", facts = listOf("Pumpkins can grow very big and round.")),
         w("Radish", Category.VEGETABLE, "\uD83E\uDDC4", difficulty = Difficulty.MEDIUM),
         w("Spinach", Category.VEGETABLE, "\uD83E\uDD6C", facts = listOf("Spinach makes you strong!")),
-        w("Tomato", Category.VEGETABLE, "\uD83C\uDF45", facts = listOf("Tomatoes are red and juicy."), aliases = listOf("tomatoes")),
+        w(
+            "Tomato",
+            Category.VEGETABLE,
+            "\uD83C\uDF45",
+            facts = listOf("Tomatoes are red and juicy."),
+            aliases = listOf(
+                "tomatoes",
+                "tamatar",
+                "tamata",
+                "tamato",
+                "tomoto",
+                "tomahto",
+                "tameto",
+            ),
+        ),
         w("Turnip", Category.VEGETABLE, "\uD83E\uDDC4", difficulty = Difficulty.MEDIUM),
         w("Asparagus", Category.VEGETABLE, "\uD83E\uDD6C", difficulty = Difficulty.HARD),
         w("Beans", Category.VEGETABLE, "\uD83E\uDED8", facts = listOf("Beans grow in a pod.")),

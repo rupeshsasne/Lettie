@@ -121,7 +121,7 @@ fun FlashcardsScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (!showingBack) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(card.emoji, fontSize = 140.sp)
+                            WordImage(card, size = 160.dp, emojiFallbackSize = 96.sp)
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "Tap to reveal",

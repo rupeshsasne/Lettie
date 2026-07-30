@@ -83,10 +83,14 @@ fun WordDetailScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp),
+                        .height(220.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(word.emoji, fontSize = 112.sp)
+                    WordImage(
+                        word = word,
+                        size = 200.dp,
+                        emojiFallbackSize = 112.sp,
+                    )
                 }
             }
 

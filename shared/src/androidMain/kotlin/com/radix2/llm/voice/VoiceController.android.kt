@@ -47,12 +47,17 @@ class AndroidVoiceController(private val appContext: Context) : VoiceController 
 
     private val tts: TextToSpeech = TextToSpeech(appContext) { status ->
         if (status == TextToSpeech.SUCCESS) {
-            val result = tts.setLanguage(Locale.US)
+            // Prefer Indian English for this audience; fall back gracefully.
+            val india = Locale.forLanguageTag("en-IN")
+            val result = tts.setLanguage(india)
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                tts.language = Locale.ENGLISH
+                val us = tts.setLanguage(Locale.US)
+                if (us == TextToSpeech.LANG_MISSING_DATA || us == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts.language = Locale.ENGLISH
+                }
             }
-            tts.setSpeechRate(0.9f)
-            tts.setPitch(1.1f)
+            tts.setSpeechRate(0.88f)
+            tts.setPitch(1.08f)
             ttsReady = true
             pendingSpeak?.let { (text, onDone) ->
                 pendingSpeak = null
@@ -87,6 +92,11 @@ class AndroidVoiceController(private val appContext: Context) : VoiceController 
             pendingSpeak = text to onDone
             return
         }
+        // Flushing cancels the previous utterance — complete its callback so awaiters don't hang.
+        val orphaned = onDoneCallbacks.values.toList()
+        onDoneCallbacks.clear()
+        orphaned.forEach { runCatching { it.invoke() } }
+
         val id = "utt_${utteranceCounter++}"
         onDoneCallbacks[id] = onDone
         isSpeaking = true
@@ -127,8 +137,10 @@ class AndroidVoiceController(private val appContext: Context) : VoiceController 
         })
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            // Prefer Indian English recognition for local accents / vocabulary.
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-IN")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 8)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
         }
         isListening = true
