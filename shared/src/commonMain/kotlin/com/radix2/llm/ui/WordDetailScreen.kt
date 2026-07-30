@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radix2.llm.data.FavoritesStore
 import com.radix2.llm.data.WordRepository
-import com.radix2.llm.domain.Category
+import com.radix2.llm.domain.Round
 import com.radix2.llm.domain.Word
 import com.radix2.llm.voice.VoiceController
 import lastlettermaster.shared.generated.resources.Res
@@ -52,8 +52,13 @@ fun WordDetailScreen(
     onBack: () -> Unit,
 ) {
     val isFav = favorites.isFavorite(word.id)
+    // Same contest round only — letter-match alone would suggest Ant after Agra.
     val nextWords = remember(word.id) {
-        repo.startingWith(word.lastLetter, Category.entries.toList(), setOf(word.id)).take(8)
+        val roundCats = Round.entries
+            .firstOrNull { word.category in it.categories }
+            ?.categories
+            ?: listOf(word.category)
+        repo.startingWith(word.lastLetter, roundCats, setOf(word.id)).take(8)
     }
 
     AppScaffold(

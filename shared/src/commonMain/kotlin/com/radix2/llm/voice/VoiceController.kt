@@ -4,6 +4,13 @@ import androidx.compose.runtime.Composable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
+/** A system TTS voice the child/parent can pick for Lettie. */
+data class TtsVoiceOption(
+    val id: String,
+    val displayName: String,
+    val localeTag: String,
+)
+
 /**
  * Voice abstraction so game/UI code stays platform-agnostic. Android provides the
  * concrete implementation (TextToSpeech + SpeechRecognizer). [isSpeaking]/[isListening]
@@ -15,6 +22,14 @@ interface VoiceController {
 
     /** Whether speech recognition is usable on this device right now. */
     val recognitionAvailable: Boolean
+
+    /** Installed en-IN (or English) system voices available for Lettie. */
+    val availableVoices: List<TtsVoiceOption>
+
+    /** Currently selected system voice id, or null while TTS is still loading. */
+    val selectedVoiceId: String?
+
+    fun selectVoice(id: String)
 
     fun speak(text: String, onDone: () -> Unit = {})
     fun stopSpeaking()
@@ -48,13 +63,19 @@ suspend fun VoiceController.awaitSilent(pollMs: Long = 50L) {
 }
 
 @Composable
-expect fun rememberVoiceController(): VoiceController
+expect fun rememberVoiceController(
+    preferredVoiceId: String? = null,
+    onVoiceSelected: (String) -> Unit = {},
+): VoiceController
 
 /** A no-op controller for previews and non-voice contexts. */
 class NoopVoiceController : VoiceController {
     override val isSpeaking: Boolean = false
     override val isListening: Boolean = false
     override val recognitionAvailable: Boolean = false
+    override val availableVoices: List<TtsVoiceOption> = emptyList()
+    override val selectedVoiceId: String? = null
+    override fun selectVoice(id: String) {}
     override fun speak(text: String, onDone: () -> Unit) { onDone() }
     override fun stopSpeaking() {}
     override fun startListening(onResult: (List<String>) -> Unit, onError: (String) -> Unit) {

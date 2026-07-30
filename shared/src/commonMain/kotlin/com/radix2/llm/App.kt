@@ -30,9 +30,12 @@ import com.radix2.llm.ui.QuizScreen
 import com.radix2.llm.ui.SetupImageLoader
 import com.radix2.llm.ui.SetupScreen
 import com.radix2.llm.ui.SystemBackHandler
+import com.radix2.llm.ui.VoiceSettingsScreen
 import com.radix2.llm.ui.WordDetailScreen
 import com.radix2.llm.ui.theme.LastLetterTheme
 import com.radix2.llm.voice.rememberVoiceController
+
+private const val PrefTtsVoiceId = "tts_voice_id"
 
 /** App navigation destinations. */
 sealed interface Screen {
@@ -44,6 +47,7 @@ sealed interface Screen {
     data object Quiz : Screen
     data object Flashcards : Screen
     data object Progress : Screen
+    data object Voice : Screen
 }
 
 @Composable
@@ -51,9 +55,12 @@ fun App() {
     SetupImageLoader()
     LastLetterTheme {
         val repo = remember { WordRepository() }
-        val voice = rememberVoiceController()
-        val sound = rememberSoundPlayer()
         val store = rememberKeyValueStore()
+        val voice = rememberVoiceController(
+            preferredVoiceId = store.getString(PrefTtsVoiceId),
+            onVoiceSelected = { store.putString(PrefTtsVoiceId, it) },
+        )
+        val sound = rememberSoundPlayer()
         val favorites = remember { FavoritesStore(store) }
         val progress = remember { ProgressStore(store) }
 
@@ -88,6 +95,7 @@ fun App() {
                             onQuiz = { navigate(Screen.Quiz) },
                             onFlashcards = { navigate(Screen.Flashcards) },
                             onProgress = { navigate(Screen.Progress) },
+                            onVoice = { navigate(Screen.Voice) },
                         )
 
                         is Screen.Library -> LibraryScreen(
@@ -158,6 +166,11 @@ fun App() {
                             progress = progress,
                             onExit = { back() },
                         )
+
+                        is Screen.Voice -> VoiceSettingsScreen(
+                            voice = voice,
+                            onBack = { back() },
+                        )
                     }
                 }
             }
@@ -176,4 +189,5 @@ private val Screen.saveKey: String
         is Screen.Quiz -> "quiz"
         is Screen.Flashcards -> "flashcards"
         is Screen.Progress -> "progress"
+        is Screen.Voice -> "voice"
     }

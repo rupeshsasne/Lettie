@@ -34,6 +34,7 @@ fun HomeScreen(
     onQuiz: () -> Unit,
     onFlashcards: () -> Unit,
     onProgress: () -> Unit,
+    onVoice: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -98,6 +99,13 @@ fun HomeScreen(
         ) {
             HomeTile("\uD83C\uDCCF", "Flashcards", onFlashcards, Modifier.weight(1f))
             HomeTile("\uD83D\uDCCA", "Progress", onProgress, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(12.dp))
+        FilledTonalButton(
+            onClick = onVoice,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+        ) {
+            Text("\uD83C\uDF99  Lettie's voice", style = MaterialTheme.typography.titleMedium)
         }
     }
 }
