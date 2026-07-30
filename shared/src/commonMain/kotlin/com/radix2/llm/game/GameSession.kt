@@ -12,8 +12,6 @@ import com.radix2.llm.domain.GameStatus
 import com.radix2.llm.domain.Round
 import com.radix2.llm.domain.Speaker
 import com.radix2.llm.domain.Word
-import com.radix2.llm.domain.WordMatching
-import kotlin.random.Random
 
 /** Outcome of the child attempting a word. */
 sealed interface SubmitResult {
@@ -26,6 +24,9 @@ sealed interface SubmitResult {
 /**
  * Holds all state for one game against Lettie. Backed by Compose snapshot state so
  * the UI recomposes automatically. Rules are enforced strictly (real-contest style).
+ *
+ * Lettie's picks are deterministic and branching-aware (QWERTY anti-jam): she prefers
+ * moves that leave the child many replies — never a coin flip among equals.
  */
 class GameSession(
     private val repo: WordRepository,
@@ -33,7 +34,6 @@ class GameSession(
     val activeCategories: List<Category>,
     val difficulty: Difficulty,
     private val lettieStarts: Boolean = true,
-    private val random: Random = Random.Default,
 ) {
     val chain = mutableStateListOf<ChainEntry>()
 
@@ -90,7 +90,7 @@ class GameSession(
             }
             opener
         } else {
-            requiredLetter = randomStartLetter()
+            requiredLetter = bestStartLetter()
             whoseTurn = Speaker.CHILD
             null
         }
@@ -102,23 +102,30 @@ class GameSession(
         return start()
     }
 
-    private fun randomStartLetter(): Char {
-        val available = repo.all
-            .filter { it.category in activeCategories }
-            .map { it.firstLetter }
-            .distinct()
-        return available.randomOrNull(random) ?: 'A'
+    /** Prefer the letter with the most Easy starters so the child has room to play. */
+    private fun bestStartLetter(): Char {
+        val pool = repo.all.filter { it.category in activeCategories }
+        val grouped = pool.groupBy { it.firstLetter.uppercaseChar() }
+        return grouped.entries
+            .maxWithOrNull(
+                compareBy<Map.Entry<Char, List<Word>>>(
+                    { it.value.count { word -> word.difficulty == Difficulty.EASY } },
+                    { it.value.size },
+                ).thenBy { it.key },
+            )
+            ?.key
+            ?: 'A'
     }
 
     private fun pickLettieOpener(): Word? {
         val pool = repo.all.filter { it.category in activeCategories && it.difficulty == Difficulty.EASY }
             .ifEmpty { repo.all.filter { it.category in activeCategories } }
-        // Don't open on a dead-end letter (except Hard, where it's fair game).
-        if (difficulty != Difficulty.HARD) {
-            val safe = pool.filter { hasReplyFor(it) }
-            if (safe.isNotEmpty()) return safe.random(random)
+        val candidates = if (difficulty != Difficulty.HARD) {
+            pool.filter { hasReplyFor(it) }.ifEmpty { pool }
+        } else {
+            pool
         }
-        return pool.randomOrNull(random)
+        return pickBest(candidates)
     }
 
     private fun play(word: Word, speaker: Speaker) {
@@ -127,7 +134,6 @@ class GameSession(
         requiredLetter = word.lastLetter
         if (speaker == Speaker.CHILD) childWordCount++
         whoseTurn = if (speaker == Speaker.CHILD) Speaker.LETTIE else Speaker.CHILD
-        // New child turn begins after Lettie (or opener) plays — arm a fresh timer once.
         if (whoseTurn == Speaker.CHILD) {
             armChildTimerIfNeeded()
         }
@@ -188,15 +194,22 @@ class GameSession(
             status = GameStatus.CHILD_WON
             return null
         }
-        // At Easy, Lettie sometimes concedes on purpose so the child can win.
-        if (difficulty == Difficulty.EASY && chain.size >= 4 && random.nextFloat() < 0.18f) {
+
+        val chosen = chooseLettieWord(candidates)
+        // Easy: concede only when every move leaves the child nearly stuck.
+        if (difficulty == Difficulty.EASY &&
+            chain.size >= 4 &&
+            replyCountAfter(chosen) < easyConcedeBranchThreshold
+        ) {
             status = GameStatus.CHILD_WON
             return null
         }
-        val chosen = chooseLettieWord(candidates)
+
         play(chosen, Speaker.LETTIE)
         return chosen
     }
+
+    private val easyConcedeBranchThreshold = 2
 
     private fun chooseLettieWord(candidates: List<Word>): Word {
         val preferred = when (difficulty) {
@@ -206,27 +219,65 @@ class GameSession(
                 .ifEmpty { candidates.filter { it.difficulty == Difficulty.MEDIUM } }
         }
         val pool = preferred.ifEmpty { candidates }
-        // Fairness: on Easy/Medium, don't hand the child a letter with no possible reply.
-        // On Hard, Lettie may exploit dead-end letters (that's the challenge).
-        if (difficulty != Difficulty.HARD) {
-            // Prefer a safe word at the target difficulty, else any safe word (keeping
-            // the game alive outranks the difficulty preference).
-            val safe = pool.filter { hasReplyFor(it) }.ifEmpty { candidates.filter { hasReplyFor(it) } }
-            if (safe.isNotEmpty()) return safe.random(random)
+        return when (difficulty) {
+            Difficulty.HARD -> {
+                pickBest(pool, maximizeBranching = false)!!
+            }
+            else -> {
+                val safe = pool.filter { hasReplyFor(it) }.ifEmpty { candidates.filter { hasReplyFor(it) } }
+                pickBest(safe.ifEmpty { pool }, maximizeBranching = true)!!
+            }
         }
-        return pool.randomOrNull(random) ?: candidates.first()
     }
 
-    /** True if the child would have at least one unused word to answer after [word]. */
-    private fun hasReplyFor(word: Word): Boolean {
+    /**
+     * Stable pick: primary key is branching left for the child (max on Easy/Medium,
+     * min on Hard), then difficulty rank, then word id.
+     */
+    private fun pickBest(candidates: List<Word>, maximizeBranching: Boolean = true): Word? {
+        if (candidates.isEmpty()) return null
+        return candidates.minWith(
+            compareBy<Word>(
+                { word ->
+                    val branch = replyCountAfter(word)
+                    if (maximizeBranching) -branch else branch
+                },
+                { word -> difficultyRank(word.difficulty) },
+                { it.id },
+            ),
+        )
+    }
+
+    private fun difficultyRank(d: Difficulty): Int = when (difficulty) {
+        Difficulty.EASY -> when (d) {
+            Difficulty.EASY -> 0
+            Difficulty.MEDIUM -> 1
+            Difficulty.HARD -> 2
+        }
+        Difficulty.MEDIUM -> when (d) {
+            Difficulty.MEDIUM -> 0
+            Difficulty.EASY -> 1
+            Difficulty.HARD -> 2
+        }
+        Difficulty.HARD -> when (d) {
+            Difficulty.HARD -> 0
+            Difficulty.MEDIUM -> 1
+            Difficulty.EASY -> 2
+        }
+    }
+
+    private fun replyCountAfter(word: Word): Int {
         val next = word.lastLetter
-        return repo.all.any {
+        return repo.all.count {
             it.category in activeCategories &&
                 it.id != word.id &&
                 it.id !in usedIds &&
                 it.firstLetter.equals(next, ignoreCase = true)
         }
     }
+
+    /** True if the child would have at least one unused word to answer after [word]. */
+    private fun hasReplyFor(word: Word): Boolean = replyCountAfter(word) > 0
 
     /** The child ran out of time or gave up — strict rules: Lettie wins. */
     fun childStuck() {
@@ -246,5 +297,5 @@ class GameSession(
         repo.startingWith(requiredLetter, activeCategories, usedIds)
             .filter { it.difficulty == Difficulty.EASY }
             .ifEmpty { repo.startingWith(requiredLetter, activeCategories, usedIds) }
-            .randomOrNull(random)
+            .minByOrNull { it.id }
 }

@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radix2.llm.data.FavoritesStore
 import com.radix2.llm.data.WordRepository
+import com.radix2.llm.domain.KidFacts
+import com.radix2.llm.domain.Pronunciation
 import com.radix2.llm.domain.Round
 import com.radix2.llm.domain.Word
 import com.radix2.llm.voice.VoiceController
@@ -52,14 +54,15 @@ fun WordDetailScreen(
     onBack: () -> Unit,
 ) {
     val isFav = favorites.isFavorite(word.id)
-    // Same contest round only — letter-match alone would suggest Ant after Agra.
+    val round = remember(word.id) {
+        Round.entries.firstOrNull { word.category in it.categories }
+    }
     val nextWords = remember(word.id) {
-        val roundCats = Round.entries
-            .firstOrNull { word.category in it.categories }
-            ?.categories
-            ?: listOf(word.category)
+        val roundCats = round?.categories ?: listOf(word.category)
         repo.startingWith(word.lastLetter, roundCats, setOf(word.id)).take(8)
     }
+    val facts = remember(word.id) { KidFacts.forWord(word) }
+    val sayItLike = remember(word.id) { Pronunciation.sayItLike(word) }
 
     AppScaffold(
         title = word.name,
@@ -115,36 +118,49 @@ fun WordDetailScreen(
                 Column {
                     InfoItem("Category", word.category.displayName)
                     HorizontalDivider()
+                    round?.let {
+                        InfoItem("Round", it.displayName)
+                        HorizontalDivider()
+                    }
+                    InfoItem("Level", word.difficulty.label)
+                    HorizontalDivider()
                     InfoItem("Starts with", word.firstLetter.toString())
                     HorizontalDivider()
                     InfoItem("Ends with", word.lastLetter.toString())
-                    word.syllables?.let {
+                    HorizontalDivider()
+                    InfoItem("Say it like", sayItLike)
+                    if (word.aliases.isNotEmpty()) {
                         HorizontalDivider()
-                        InfoItem("Say it like", it)
+                        InfoItem("Also called", word.aliases.joinToString(", "))
                     }
-                    word.geo?.capital?.let {
-                        HorizontalDivider()
-                        InfoItem("Capital", it)
-                    }
-                    word.geo?.countryOf?.let {
-                        HorizontalDivider()
-                        InfoItem("Country", it)
-                    }
+                    word.geo?.capital
+                        ?.takeIf { it.isNotBlank() && it != "Capital" && it != "—" }
+                        ?.let {
+                            HorizontalDivider()
+                            InfoItem("Capital", it)
+                        }
+                    word.geo?.countryOf
+                        ?.takeIf { it.isNotBlank() && it != "World" }
+                        ?.let {
+                            HorizontalDivider()
+                            InfoItem("Country", it)
+                        }
                 }
             }
 
-            if (word.facts.isNotEmpty()) {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Did you know?", style = MaterialTheme.typography.titleMedium)
-                        word.facts.forEach { fact ->
-                            Text(
-                                text = fact,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                    }
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("About ${word.name}", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = facts[0],
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    Text(
+                        text = facts[1],
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                 }
             }
 

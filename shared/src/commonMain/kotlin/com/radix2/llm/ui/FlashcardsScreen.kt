@@ -35,9 +35,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.radix2.llm.data.LetterCoverage
 import com.radix2.llm.data.WordRepository
 import com.radix2.llm.domain.Category
+import com.radix2.llm.domain.Pronunciation
 import com.radix2.llm.domain.Round
+import com.radix2.llm.domain.Word
 import com.radix2.llm.voice.VoiceController
 import lastlettermaster.shared.generated.resources.Res
 import lastlettermaster.shared.generated.resources.ic_volume_up
@@ -59,7 +62,7 @@ fun FlashcardsScreen(
         else rounds.flatMap { it.categories }.distinct()
     }
     val deck = remember(selectedRoundNames) {
-        repo.all.filter { it.category in categories }.shuffled()
+        pedagogicalDeck(repo, categories)
     }
 
     var index by remember(selectedRoundNames) { mutableStateOf(0) }
@@ -125,7 +128,7 @@ fun FlashcardsScreen(
             ElevatedCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(320.dp)
+                    .height(400.dp)
                     .graphicsLayer {
                         rotationY = rotation
                         cameraDistance = 12f * density
@@ -135,7 +138,7 @@ fun FlashcardsScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (!showingBack) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            WordImage(card, size = 160.dp, emojiFallbackSize = 96.sp)
+                            WordImage(card, size = 220.dp, emojiFallbackSize = 128.sp)
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "Tap to reveal",
@@ -147,17 +150,21 @@ fun FlashcardsScreen(
                         // Counter-rotate so the back reads normally.
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.graphicsLayer { rotationY = 180f },
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .graphicsLayer { rotationY = 180f },
                         ) {
                             Text(
                                 card.name,
                                 style = MaterialTheme.typography.displaySmall,
                                 textAlign = TextAlign.Center,
                             )
-                            card.syllables?.let {
-                                Spacer(Modifier.height(8.dp))
-                                Text(it, style = MaterialTheme.typography.titleMedium)
-                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                Pronunciation.sayItLike(card),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 card.category.displayName,
@@ -196,4 +203,28 @@ fun FlashcardsScreen(
             }
         }
     }
+}
+
+/** Practice jammed keys first: letters that often end words, then Easy→Hard, stable ids. */
+private fun pedagogicalDeck(
+    repo: WordRepository,
+    categories: List<Category>,
+): List<Word> {
+    val words = repo.all.filter { it.category in categories }
+    val rounds = Round.entries.filter { round -> round.categories.any { it in categories } }
+        .ifEmpty { Round.entries.toList() }
+    val endingPriority = rounds.flatMap { LetterCoverage.topEndings(it) }.distinct()
+    val freq = LetterCoverage.endingFrequency(words).associate { it.first to it.second }
+
+    return words.sortedWith(
+        compareBy<Word>(
+            { word ->
+                val letter = word.firstLetter.uppercaseChar()
+                val idx = endingPriority.indexOf(letter)
+                if (idx >= 0) idx else endingPriority.size + 26 - (freq[letter] ?: 0)
+            },
+            { it.difficulty.ordinal },
+            { it.id },
+        ),
+    )
 }
