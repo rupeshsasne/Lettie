@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radix2.llm.data.WordRepository
 import com.radix2.llm.domain.Category
+import com.radix2.llm.domain.Round
 import com.radix2.llm.voice.VoiceController
 import lastlettermaster.shared.generated.resources.Res
 import lastlettermaster.shared.generated.resources.ic_volume_up
@@ -49,14 +50,20 @@ fun FlashcardsScreen(
     voice: VoiceController,
     onExit: () -> Unit,
 ) {
-    var category by remember { mutableStateOf<Category?>(null) }
-    val deck = remember(category) {
-        val cats = category?.let { listOf(it) } ?: Category.entries.toList()
-        repo.all.filter { it.category in cats }.shuffled()
+    var selectedRoundNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    val categories = remember(selectedRoundNames) {
+        val rounds = selectedRoundNames.mapNotNull { name ->
+            Round.entries.find { it.name == name }
+        }
+        if (rounds.isEmpty()) Category.entries.toList()
+        else rounds.flatMap { it.categories }.distinct()
+    }
+    val deck = remember(selectedRoundNames) {
+        repo.all.filter { it.category in categories }.shuffled()
     }
 
-    var index by remember(category) { mutableStateOf(0) }
-    var flipped by remember(category) { mutableStateOf(false) }
+    var index by remember(selectedRoundNames) { mutableStateOf(0) }
+    var flipped by remember(selectedRoundNames) { mutableStateOf(false) }
 
     val card = deck.getOrNull(index)
     val rotation by animateFloatAsState(
@@ -79,16 +86,23 @@ fun FlashcardsScreen(
             ) {
                 item {
                     FilterChip(
-                        selected = category == null,
-                        onClick = { category = null },
+                        selected = selectedRoundNames.isEmpty(),
+                        onClick = { selectedRoundNames = emptyList() },
                         label = { Text("All") },
                     )
                 }
-                items(Category.entries.toList()) { cat ->
+                items(Round.entries.toList()) { round ->
+                    val selected = round.name in selectedRoundNames
                     FilterChip(
-                        selected = category == cat,
-                        onClick = { category = cat },
-                        label = { Text(cat.displayName) },
+                        selected = selected,
+                        onClick = {
+                            selectedRoundNames = if (selected) {
+                                selectedRoundNames - round.name
+                            } else {
+                                selectedRoundNames + round.name
+                            }
+                        },
+                        label = { Text(round.displayName) },
                     )
                 }
             }
