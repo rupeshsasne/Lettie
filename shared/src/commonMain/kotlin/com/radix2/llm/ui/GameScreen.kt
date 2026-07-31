@@ -5,17 +5,18 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,18 +26,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,12 +51,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radix2.llm.data.ProgressStore
 import com.radix2.llm.data.WordRepository
+import com.radix2.llm.domain.Category
 import com.radix2.llm.domain.ChainEntry
 import com.radix2.llm.domain.GameStatus
 import com.radix2.llm.domain.Speaker
@@ -62,6 +67,11 @@ import com.radix2.llm.domain.Word
 import com.radix2.llm.game.GameSession
 import com.radix2.llm.game.SubmitResult
 import com.radix2.llm.sound.SoundPlayer
+import com.radix2.llm.ui.adaptive.AdaptiveSplit
+import com.radix2.llm.ui.adaptive.LocalWindowSize
+import com.radix2.llm.ui.theme.LettieBrand
+import com.radix2.llm.ui.theme.LettieDimens
+import com.radix2.llm.ui.theme.letterStageBrush
 import com.radix2.llm.voice.VoiceController
 import com.radix2.llm.voice.awaitSilent
 import com.radix2.llm.voice.speakAwait
@@ -83,6 +93,8 @@ fun GameScreen(
     progress: ProgressStore,
     onOpenWord: (Word) -> Unit,
     onExit: () -> Unit,
+    /** After a loss — practice words for the letter the child got stuck on. */
+    onPracticeLetter: ((letter: Char, categories: List<Category>) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -103,6 +115,20 @@ fun GameScreen(
 
     fun letterPhrase(c: Char) = "the letter $c"
 
+    fun celebrateAccepted(word: Word) {
+        celebrateWord = word
+        sound.correct()
+        confetti++
+        val firstTime = progress.noteChildPlayed(word.id)
+        val line = if (firstTime) {
+            "Wow, a new word! ${word.name}!"
+        } else {
+            "Yes! ${word.name}!"
+        }
+        // Celebrate in composition scope so Lettie's turn effect isn't the owner.
+        scope.launch { voice.speakAwait(line) }
+    }
+
     fun beginListening() {
         if (voice.isListening || voice.isSpeaking) return
         if (session.whoseTurn != Speaker.CHILD || session.status != GameStatus.PLAYING) return
@@ -118,11 +144,7 @@ fun GameScreen(
                             childFeedback = null
                             showTyping = false
                             typed = ""
-                            celebrateWord = r.word
-                            sound.correct()
-                            confetti++
-                            // Celebrate in composition scope so Lettie's turn effect isn't the owner.
-                            scope.launch { voice.speakAwait("Yes! ${r.word.name}!") }
+                            celebrateAccepted(r.word)
                             return@startListening
                         }
                         is SubmitResult.WrongLetter -> {
@@ -292,339 +314,457 @@ fun GameScreen(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "micScale",
     )
+    val window = LocalWindowSize.current
+    val letterSize = when {
+        window.heightSizeClass == com.radix2.llm.ui.adaptive.LettieHeightSizeClass.Compact -> 64.sp
+        window.isLandscape -> 72.sp
+        else -> 96.sp
+    }
 
     AppScaffold(title = session.round.displayName, onBack = onExit) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            Column(
+            AdaptiveSplit(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 4.dp, bottom = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = caption,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                // Hero: letter first (the job), photo of last word beside/below as context
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                ) {
+                    .padding(horizontal = LettieDimens.screenPadding)
+                    .padding(top = 4.dp, bottom = LettieDimens.spaceMd),
+                dualPane = window.useDualPane || window.isLandscape,
+                start = {
+                    GameLetterHero(
+                        caption = caption,
+                        childTurn = childTurn,
+                        requiredLetter = session.requiredLetter,
+                        letterSize = letterSize,
+                        childTimeLeftMs = session.childTimeLeftMs,
+                        totalMs = totalMs,
+                        featured = featured,
+                        session = session,
+                        onOpenWord = onOpenWord,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
+                end = {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(16.dp),
+                            .verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        Text(
-                            text = if (childTurn) "Say a word starting with" else "Next letter",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            textAlign = TextAlign.Center,
-                        )
-                        AnimatedContent(
-                            targetState = session.requiredLetter,
-                            transitionSpec = {
-                                (fadeIn() + scaleIn(initialScale = 0.5f)) togetherWith fadeOut()
-                            },
-                            label = "requiredLetter",
-                        ) { letter ->
-                            Text(
-                                text = if (letter == ' ') "?" else letter.toString(),
-                                style = MaterialTheme.typography.displayLarge.copy(fontSize = 96.sp),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                        if (session.chain.size > 1) {
+                            WordChain(session.chain, onOpenWord = onOpenWord)
+                            Spacer(Modifier.height(LettieDimens.spaceSm))
                         }
-                        if (childTurn) {
-                            LinearProgressIndicator(
-                                progress = { (session.childTimeLeftMs.toFloat() / totalMs).coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth().height(10.dp),
-                            )
-                            Text(
-                                "${(session.childTimeLeftMs + 999) / 1000} seconds left",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
+
+                        AnimatedVisibility(visible = childFeedback != null) {
+                            childFeedback?.let { msg ->
+                                Text(
+                                    msg,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                )
+                            }
                         }
-                    }
-                }
 
-                Spacer(Modifier.height(10.dp))
-
-                // Last word photo — supporting context, not competing with the letter
-                AnimatedContent(
-                    targetState = featured?.id,
-                    transitionSpec = {
-                        (fadeIn(tween(250)) + scaleIn(initialScale = 0.92f)) togetherWith
-                            (fadeOut(tween(150)) + scaleOut(targetScale = 0.96f))
-                    },
-                    label = "featuredWord",
-                    modifier = Modifier.fillMaxWidth(),
-                ) { featuredId ->
-                    val word = featured.takeIf { it?.id == featuredId }
-                    if (word != null) {
-                        Card(
-                            onClick = { onOpenWord(word) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                WordImage(word = word, size = 72.dp, emojiFallbackSize = 40.sp)
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        word.name,
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = when {
-                                            session.chain.lastOrNull()?.word?.id == word.id &&
-                                                session.chain.lastOrNull()?.speaker == Speaker.LETTIE ->
-                                                "Lettie\u2019s word"
-                                            session.chain.lastOrNull()?.word?.id == word.id ->
-                                                "You said it!"
-                                            else -> word.category.displayName
+                        if (guesses.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(guesses, key = { it.id }) { word ->
+                                    AssistChip(
+                                        onClick = {
+                                            val r = session.submitConfirmed(word)
+                                            if (r is SubmitResult.Accepted) {
+                                                guesses = emptyList()
+                                                childFeedback = null
+                                                celebrateAccepted(r.word)
+                                            }
                                         },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        leadingIcon = {
+                                            WordImage(word, size = 28.dp, emojiFallbackSize = 16.sp)
+                                        },
+                                        label = { Text(word.name) },
                                     )
                                 }
                             }
                         }
-                    }
-                }
 
-                if (session.chain.size > 1) {
-                    Spacer(Modifier.height(8.dp))
-                    WordChain(session.chain, onOpenWord = onOpenWord)
-                }
+                        if (showTyping) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedTextField(
+                                    value = typed,
+                                    onValueChange = { typed = it },
+                                    label = { Text("Type a word") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Button(
+                                    onClick = {
+                                        if (typed.isBlank()) return@Button
+                                        val r = session.submitChild(typed)
+                                        when (r) {
+                                            is SubmitResult.Accepted -> {
+                                                showTyping = false
+                                                typed = ""
+                                                childFeedback = null
+                                                guesses = emptyList()
+                                                celebrateAccepted(r.word)
+                                            }
+                                            is SubmitResult.WrongLetter -> {
+                                                sound.wrong()
+                                                childFeedback =
+                                                    "${r.word.name} starts with ${r.word.firstLetter}. Need ${r.required}!"
+                                                session.consumeRetry()
+                                            }
+                                            is SubmitResult.AlreadyUsed -> {
+                                                sound.wrong()
+                                                childFeedback = "Already used ${r.word.name}!"
+                                                session.consumeRetry()
+                                            }
+                                            is SubmitResult.NotRecognized -> {
+                                                sound.wrong()
+                                                guesses = r.guesses
+                                                childFeedback = if (r.guesses.isEmpty()) {
+                                                    "I don't know that word."
+                                                } else {
+                                                    "Did you mean\u2026?"
+                                                }
+                                                session.consumeRetry()
+                                            }
+                                        }
+                                    },
+                                ) { Text("Go") }
+                            }
+                        }
 
-                AnimatedVisibility(visible = childFeedback != null) {
-                    childFeedback?.let { msg ->
-                        Text(
-                            msg,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                        )
-                    }
-                }
+                        Spacer(Modifier.height(LettieDimens.spaceMd))
 
-                if (guesses.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(guesses, key = { it.id }) { word ->
-                            AssistChip(
-                                onClick = {
-                                    val r = session.submitConfirmed(word)
-                                    if (r is SubmitResult.Accepted) {
-                                        celebrateWord = r.word
-                                        sound.correct()
-                                        confetti++
-                                        guesses = emptyList()
-                                        childFeedback = null
-                                        scope.launch { voice.speakAwait("Yes! ${r.word.name}!") }
-                                    }
+                        Button(
+                            onClick = { beginListening() },
+                            enabled = childTurn,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(LettieDimens.primaryCtaHeight)
+                                .scale(micScale),
+                            shape = MaterialTheme.shapes.large,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (voice.isListening) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
                                 },
-                                leadingIcon = {
-                                    WordImage(word, size = 28.dp, emojiFallbackSize = 16.sp)
+                            ),
+                        ) {
+                            Icon(
+                                painter = painterResource(Res.drawable.ic_mic),
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = when {
+                                    voice.isListening -> "Listening\u2026 speak now!"
+                                    childTurn -> "Tap & Speak"
+                                    else -> "Wait for Lettie\u2026"
                                 },
-                                label = { Text(word.name) },
+                                style = MaterialTheme.typography.titleLarge,
                             )
                         }
-                    }
-                }
 
-                if (showTyping) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        OutlinedTextField(
-                            value = typed,
-                            onValueChange = { typed = it },
-                            label = { Text("Type a word") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Button(
-                            onClick = {
-                                if (typed.isBlank()) return@Button
-                                val r = session.submitChild(typed)
-                                when (r) {
-                                    is SubmitResult.Accepted -> {
-                                        celebrateWord = r.word
-                                        sound.correct()
-                                        confetti++
-                                        showTyping = false
-                                        typed = ""
-                                        childFeedback = null
-                                        guesses = emptyList()
-                                        scope.launch { voice.speakAwait("Yes! ${r.word.name}!") }
-                                    }
-                                    is SubmitResult.WrongLetter -> {
-                                        sound.wrong()
-                                        childFeedback = "${r.word.name} starts with ${r.word.firstLetter}. Need ${r.required}!"
-                                        session.consumeRetry()
-                                    }
-                                    is SubmitResult.AlreadyUsed -> {
-                                        sound.wrong()
-                                        childFeedback = "Already used ${r.word.name}!"
-                                        session.consumeRetry()
-                                    }
-                                    is SubmitResult.NotRecognized -> {
-                                        sound.wrong()
-                                        guesses = r.guesses
-                                        childFeedback = if (r.guesses.isEmpty()) {
-                                            "I don't know that word."
-                                        } else {
-                                            "Did you mean\u2026?"
+                        Spacer(Modifier.height(LettieDimens.spaceSm))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            FilledTonalButton(
+                                onClick = {
+                                    val hint = session.hintWord()
+                                    childFeedback = if (hint != null) {
+                                        scope.launch {
+                                            voice.speakAwait(
+                                                "Here's a hint. Try a word starting with ${letterPhrase(session.requiredLetter)}, like ${hint.name}.",
+                                            )
                                         }
-                                        session.consumeRetry()
+                                        "Try ${hint.name}!"
+                                    } else {
+                                        "Tricky letter!"
                                     }
-                                }
-                            },
-                        ) { Text("Go") }
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                Button(
-                    onClick = { beginListening() },
-                    enabled = childTurn,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(72.dp)
-                        .scale(micScale),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (voice.isListening) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
-                    ),
-                ) {
-                    Icon(
-                        painter = painterResource(Res.drawable.ic_mic),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = when {
-                            voice.isListening -> "Listening\u2026 speak now!"
-                            childTurn -> "Tap & Speak"
-                            else -> "Wait for Lettie\u2026"
-                        },
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    FilledTonalButton(
-                        onClick = {
-                            val hint = session.hintWord()
-                            childFeedback = if (hint != null) {
-                                scope.launch {
-                                    voice.speakAwait(
-                                        "Here's a hint. Try a word starting with ${letterPhrase(session.requiredLetter)}, like ${hint.name}.",
-                                    )
-                                }
-                                "Try ${hint.name}!"
-                            } else {
-                                "Tricky letter!"
+                                },
+                                modifier = Modifier.weight(1f).height(LettieDimens.minTouch),
+                            ) {
+                                Icon(
+                                    painter = painterResource(Res.drawable.ic_lightbulb),
+                                    contentDescription = null,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Hint")
                             }
-                        },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(Res.drawable.ic_lightbulb),
-                            contentDescription = null,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Hint")
+                            FilledTonalButton(
+                                onClick = { showTyping = !showTyping },
+                                modifier = Modifier.weight(1f).height(LettieDimens.minTouch),
+                            ) {
+                                Text(if (showTyping) "Hide keyboard" else "Type instead")
+                            }
+                        }
                     }
-                    FilledTonalButton(
-                        onClick = { showTyping = !showTyping },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                    ) {
-                        Text(if (showTyping) "Hide keyboard" else "Type instead")
-                    }
-                }
-            }
+                },
+            )
             ConfettiOverlay(trigger = confetti, modifier = Modifier.fillMaxSize())
+        }
+    }
+
+    fun restartMatch() {
+        guesses = emptyList()
+        childFeedback = null
+        showTyping = false
+        typed = ""
+        autoListenAtChainSize = -1
+        scope.launch {
+            val opener = session.restart()
+            ready = true
+            if (opener != null) {
+                caption = "Lettie played ${opener.name}!"
+                celebrateWord = opener
+                voice.speakAwait("Let's play again! My word is ${opener.name}. Your turn!")
+            } else {
+                caption = "You start!"
+                celebrateWord = null
+                voice.speakAwait("Let's play again! You start!")
+            }
         }
     }
 
     if (session.status == GameStatus.CHILD_WON || session.status == GameStatus.LETTIE_WON) {
         val childWon = session.status == GameStatus.CHILD_WON
+        val stuckLetter = session.requiredLetter.uppercaseChar()
+        val canPractice = !childWon && stuckLetter.isLetter() && onPracticeLetter != null
         AlertDialog(
             onDismissRequest = { },
             title = { Text(if (childWon) "You won!" else "Good try!") },
             text = {
-                Text("You played ${session.childWordCount} word${if (session.childWordCount == 1) "" else "s"}.")
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "You played ${session.childWordCount} word${if (session.childWordCount == 1) "" else "s"}.",
+                    )
+                    if (canPractice) {
+                        Text(
+                            "You got stuck on $stuckLetter. Practice a few $stuckLetter-words, then try again!",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    guesses = emptyList()
-                    childFeedback = null
-                    showTyping = false
-                    typed = ""
-                    autoListenAtChainSize = -1
-                    scope.launch {
-                        val opener = session.restart()
-                        ready = true
-                        if (opener != null) {
-                            caption = "Lettie played ${opener.name}!"
-                            celebrateWord = opener
-                            voice.speakAwait("Let's play again! My word is ${opener.name}. Your turn!")
-                        } else {
-                            caption = "You start!"
-                            celebrateWord = null
-                            voice.speakAwait("Let's play again! You start!")
-                        }
+                if (canPractice) {
+                    TextButton(
+                        onClick = { onPracticeLetter.invoke(stuckLetter, session.activeCategories) },
+                    ) {
+                        Text("Practice $stuckLetter")
                     }
-                }) {
-                    Text("Play again")
+                } else {
+                    TextButton(onClick = { restartMatch() }) {
+                        Text("Play again")
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = onExit) { Text("Home") }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (canPractice) {
+                        TextButton(onClick = { restartMatch() }) {
+                            Text("Play again")
+                        }
+                    }
+                    TextButton(onClick = onExit) { Text("Home") }
+                }
             },
         )
+    }
+}
+
+
+/**
+ * Single play stage — letter + last word live in one surface.
+ * Last word is an *inset* chip inside the card (never a second stacked card).
+ */
+@Composable
+private fun GameLetterHero(
+    caption: String,
+    childTurn: Boolean,
+    requiredLetter: Char,
+    letterSize: androidx.compose.ui.unit.TextUnit,
+    childTimeLeftMs: Int,
+    totalMs: Int,
+    featured: Word?,
+    session: GameSession,
+    onOpenWord: (Word) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = caption,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        )
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = Color.Transparent,
+            shadowElevation = 4.dp,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(letterStageBrush())
+                    .padding(LettieDimens.spaceMd),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = if (childTurn) "Say a word starting with" else "Next letter",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    textAlign = TextAlign.Center,
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnimatedContent(
+                        targetState = requiredLetter,
+                        transitionSpec = {
+                            (fadeIn(tween(220)) + scaleIn(
+                                initialScale = 0.55f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMediumLow,
+                                ),
+                            )) togetherWith fadeOut(tween(120))
+                        },
+                        label = "requiredLetter",
+                    ) { letter ->
+                        Text(
+                            text = if (letter == ' ') "?" else letter.toString(),
+                            style = MaterialTheme.typography.displayLarge.copy(fontSize = letterSize),
+                            color = if (childTurn) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.tertiary
+                            },
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+                if (childTurn) {
+                    LinearProgressIndicator(
+                        progress = { (childTimeLeftMs.toFloat() / totalMs).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp),
+                        color = LettieBrand.Coral,
+                        trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f),
+                    )
+                    Text(
+                        "${(childTimeLeftMs + 999) / 1000} seconds left",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(top = 6.dp, bottom = LettieDimens.spaceSm),
+                    )
+                } else {
+                    Spacer(Modifier.height(LettieDimens.spaceSm))
+                }
+
+                if (featured != null) {
+                    LastWordChip(
+                        word = featured,
+                        session = session,
+                        onOpenWord = onOpenWord,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Compact last-word row inset inside the stage — soft chip, not a black slab. */
+@Composable
+private fun LastWordChip(
+    word: Word,
+    session: GameSession,
+    onOpenWord: (Word) -> Unit,
+) {
+    AnimatedContent(
+        targetState = word.id,
+        transitionSpec = {
+            (fadeIn(tween(220)) + scaleIn(initialScale = 0.96f)) togetherWith
+                fadeOut(tween(120))
+        },
+        label = "lastWordChip",
+        modifier = Modifier.fillMaxWidth(),
+    ) { id ->
+        val shown = word.takeIf { it.id == id } ?: return@AnimatedContent
+        val subtitle = when {
+            session.chain.lastOrNull()?.word?.id == shown.id &&
+                session.chain.lastOrNull()?.speaker == Speaker.LETTIE ->
+                "Lettie\u2019s word"
+            session.chain.lastOrNull()?.word?.id == shown.id ->
+                "You said it!"
+            else -> shown.category.displayName
+        }
+        Surface(
+            onClick = { onOpenWord(shown) },
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.28f),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WordImage(
+                    word = shown,
+                    size = 56.dp,
+                    emojiFallbackSize = 32.sp,
+                    contentScale = ContentScale.Crop,
+                    shape = MaterialTheme.shapes.medium,
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                ) {
+                    Text(
+                        shown.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    )
+                }
+            }
+        }
     }
 }
 

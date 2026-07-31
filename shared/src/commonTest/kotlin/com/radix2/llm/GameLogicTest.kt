@@ -8,6 +8,7 @@ import com.radix2.llm.domain.Difficulty
 import com.radix2.llm.domain.KidFacts
 import com.radix2.llm.domain.Pronunciation
 import com.radix2.llm.domain.Round
+import com.radix2.llm.domain.Word
 import com.radix2.llm.domain.WordMatching
 import com.radix2.llm.game.GameSession
 import com.radix2.llm.game.QuizGenerator
@@ -30,10 +31,12 @@ class GameLogicTest {
 
     @Test
     fun eggplantDoesNotCollideWithElephant() {
-        assertTrue(WordMatching.matches("eggplant", repo.byId("vegetable_eggplant")!!))
+        val brinjal = assertNotNull(repo.byId("vegetable_brinjal"))
+        assertTrue(WordMatching.matches("eggplant", brinjal))
+        assertTrue(WordMatching.matches("brinjal", brinjal))
         assertTrue(!WordMatching.matches("eggplant", repo.byId("animal_elephant")!!))
-        assertEquals("vegetable_eggplant", repo.findSpoken("eggplant", Category.entries)!!.id)
-        assertEquals("vegetable_eggplant", repo.findSpoken("brinjal", Category.entries)!!.id)
+        assertEquals("vegetable_brinjal", repo.findSpoken("eggplant", Category.entries)!!.id)
+        assertEquals("vegetable_brinjal", repo.findSpoken("brinjal", Category.entries)!!.id)
     }
 
     @Test
@@ -181,8 +184,8 @@ class GameLogicTest {
     }
 
     @Test
-    fun lettiePicksDeterministically() {
-        fun opener(): String {
+    fun lettieOpenerVariesAmongStrongStarters() {
+        fun opener(): Word {
             val session = GameSession(
                 repo = repo,
                 round = Round.ROUND_1,
@@ -190,9 +193,14 @@ class GameLogicTest {
                 difficulty = Difficulty.EASY,
                 lettieStarts = true,
             )
-            return session.start()!!.id
+            return assertNotNull(session.start())
         }
-        assertEquals(opener(), opener())
+        val openers = (1..40).map { opener() }
+        assertTrue(openers.all { it.difficulty == Difficulty.EASY })
+        assertTrue(
+            openers.map { it.id }.toSet().size >= 3,
+            "Expected varied openers, got ${openers.map { it.name }.distinct()}",
+        )
     }
 
     @Test

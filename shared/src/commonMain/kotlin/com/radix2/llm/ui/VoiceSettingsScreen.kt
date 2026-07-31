@@ -17,6 +17,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.radix2.llm.ui.adaptive.MaxWidthContainer
+import com.radix2.llm.ui.theme.LettieDimens
 import com.radix2.llm.voice.VoiceController
 
 @Composable
@@ -25,11 +27,15 @@ fun VoiceSettingsScreen(
     onBack: () -> Unit,
 ) {
     AppScaffold(title = "Lettie's voice", onBack = onBack) { innerPadding ->
+        MaxWidthContainer(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = LettieDimens.screenPadding),
         ) {
             Text(
                 text = "System voices · Soft · Indian English",
@@ -80,6 +86,7 @@ fun VoiceSettingsScreen(
                     }
                 }
             }
+        }
         }
     }
 }

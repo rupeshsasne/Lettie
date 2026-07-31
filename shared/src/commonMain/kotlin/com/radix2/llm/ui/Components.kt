@@ -2,22 +2,13 @@ package com.radix2.llm.ui
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import lastlettermaster.shared.generated.resources.Res
-import lastlettermaster.shared.generated.resources.ic_arrow_back
-import org.jetbrains.compose.resources.painterResource
+import com.radix2.llm.ui.adaptive.LettieDestination
+import com.radix2.llm.ui.adaptive.LettieScaffold
 
 /**
- * Standard M3 Scaffold + CenterAlignedTopAppBar wrapper used across screens so every
- * screen handles status-bar insets consistently. Uses only Material 3 components.
+ * Back-compat wrapper around [LettieScaffold] for nested screens with a top app bar.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppScaffold(
     title: String,
@@ -26,23 +17,31 @@ fun AppScaffold(
     floatingActionButton: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_arrow_back),
-                                contentDescription = "Back",
-                            )
-                        }
-                    }
-                },
-                actions = actions,
-            )
-        },
+    LettieScaffold(
+        title = title,
+        onBack = onBack,
+        selected = null,
+        onDestinationSelected = null,
+        showNav = false,
+        actions = actions,
+        floatingActionButton = floatingActionButton,
+        content = content,
+    )
+}
+
+@Composable
+fun MainScaffold(
+    selected: LettieDestination,
+    onDestinationSelected: (LettieDestination) -> Unit,
+    title: String? = null,
+    floatingActionButton: @Composable () -> Unit = {},
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    LettieScaffold(
+        title = title,
+        selected = selected,
+        onDestinationSelected = onDestinationSelected,
+        showNav = true,
         floatingActionButton = floatingActionButton,
         content = content,
     )

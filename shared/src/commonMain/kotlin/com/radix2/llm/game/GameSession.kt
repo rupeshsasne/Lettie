@@ -25,8 +25,10 @@ sealed interface SubmitResult {
  * Holds all state for one game against Lettie. Backed by Compose snapshot state so
  * the UI recomposes automatically. Rules are enforced strictly (real-contest style).
  *
- * Lettie's picks are deterministic and branching-aware (QWERTY anti-jam): she prefers
- * moves that leave the child many replies — never a coin flip among equals.
+ * Mid-game picks are branching-aware (QWERTY anti-jam) and gently biased toward
+ * words the child has used less often across games ([childPlayCount]).
+ * The opening word is chosen at random among several strong Easy starters so
+ * every match doesn't begin the same way.
  */
 class GameSession(
     private val repo: WordRepository,
@@ -34,6 +36,8 @@ class GameSession(
     val activeCategories: List<Category>,
     val difficulty: Difficulty,
     private val lettieStarts: Boolean = true,
+    /** How often the child has successfully said each word id (across games). */
+    private val childPlayCount: (String) -> Int = { 0 },
 ) {
     val chain = mutableStateListOf<ChainEntry>()
 
@@ -125,7 +129,16 @@ class GameSession(
         } else {
             pool
         }
-        return pickBest(candidates)
+        if (candidates.isEmpty()) return null
+        // Vary the opener: random among a band of strong branching words (not a tiny
+        // elite of 1–2), preferring words the child hasn't leaned on yet.
+        val strong = candidates
+            .sortedByDescending { replyCountAfter(it) }
+            .take(12)
+            .ifEmpty { candidates }
+        val minUses = strong.minOf { childPlayCount(it.id) }
+        val fresh = strong.filter { childPlayCount(it.id) <= minUses }.ifEmpty { strong }
+        return fresh.random()
     }
 
     private fun play(word: Word, speaker: Speaker) {
@@ -232,7 +245,8 @@ class GameSession(
 
     /**
      * Stable pick: primary key is branching left for the child (max on Easy/Medium,
-     * min on Hard), then difficulty rank, then word id.
+     * min on Hard), then difficulty rank, then how often the child has used the word
+     * (prefer fresher), then word id.
      */
     private fun pickBest(candidates: List<Word>, maximizeBranching: Boolean = true): Word? {
         if (candidates.isEmpty()) return null
@@ -243,6 +257,7 @@ class GameSession(
                     if (maximizeBranching) -branch else branch
                 },
                 { word -> difficultyRank(word.difficulty) },
+                { childPlayCount(it.id) },
                 { it.id },
             ),
         )
@@ -297,5 +312,5 @@ class GameSession(
         repo.startingWith(requiredLetter, activeCategories, usedIds)
             .filter { it.difficulty == Difficulty.EASY }
             .ifEmpty { repo.startingWith(requiredLetter, activeCategories, usedIds) }
-            .minByOrNull { it.id }
+            .minWithOrNull(compareBy({ childPlayCount(it.id) }, { it.id }))
 }

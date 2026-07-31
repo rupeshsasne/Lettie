@@ -43,6 +43,7 @@ import com.radix2.llm.data.WordRepository
 import com.radix2.llm.domain.Category
 import com.radix2.llm.domain.Round
 import com.radix2.llm.domain.Word
+import com.radix2.llm.ui.adaptive.LettieDestination
 import com.radix2.llm.voice.VoiceController
 import lastlettermaster.shared.generated.resources.Res
 import lastlettermaster.shared.generated.resources.ic_favorite
@@ -62,7 +63,10 @@ fun LibraryScreen(
     favorites: FavoritesStore,
     initialCategory: Category?,
     onOpenWord: (Word) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    showScaffold: Boolean = true,
+    selectedDestination: LettieDestination = LettieDestination.Words,
+    onDestinationSelected: ((LettieDestination) -> Unit)? = null,
 ) {
     var selectedRoundNames by rememberSaveable {
         mutableStateOf(
@@ -85,7 +89,7 @@ fun LibraryScreen(
     }
     val trimmed = query.trim()
 
-    AppScaffold(title = "Words", onBack = onBack) { innerPadding ->
+    val body: @Composable (PaddingValues) -> Unit = { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding)) {
             OutlinedTextField(
                 value = query,
@@ -195,7 +199,7 @@ fun LibraryScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(end = 48.dp),
+                            .padding(end = 40.dp),
                         state = listState,
                     ) {
                         sections.forEach { (letter, words) ->
@@ -248,6 +252,20 @@ fun LibraryScreen(
             }
         }
     }
+
+    if (showScaffold) {
+        if (onDestinationSelected != null) {
+            MainScaffold(
+                selected = selectedDestination,
+                onDestinationSelected = onDestinationSelected,
+                title = "Words",
+            ) { padding -> body(padding) }
+        } else {
+            AppScaffold(title = "Words", onBack = onBack) { padding -> body(padding) }
+        }
+    } else {
+        body(PaddingValues())
+    }
 }
 
 private data class LetterRange(val letter: Char, val startIndex: Int, val endIndex: Int)
@@ -298,8 +316,20 @@ private fun WordRow(
 ) {
     val isFav = favorites.isFavorite(word.id)
     ListItem(
-        headlineContent = { Text(word.name) },
-        supportingContent = { Text(word.category.displayName) },
+        headlineContent = {
+            Text(
+                word.name,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        },
+        supportingContent = {
+            Text(
+                word.category.displayName,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        },
         leadingContent = {
             WordImage(word = word, size = 48.dp, emojiFallbackSize = 28.sp)
         },
@@ -322,7 +352,9 @@ private fun WordRow(
                 }
             }
         },
-        modifier = Modifier.clickable { onOpenWord(word) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenWord(word) },
     )
 }
 

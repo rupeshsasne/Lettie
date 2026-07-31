@@ -1,6 +1,7 @@
 package com.radix2.llm.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +32,10 @@ import com.radix2.llm.data.WordRepository
 import com.radix2.llm.game.QuizGenerator
 import com.radix2.llm.game.QuizQuestion
 import com.radix2.llm.sound.SoundPlayer
+import com.radix2.llm.ui.adaptive.AdaptiveSplit
+import com.radix2.llm.ui.adaptive.LocalWindowSize
+import com.radix2.llm.ui.adaptive.MaxWidthContainer
+import com.radix2.llm.ui.theme.LettieDimens
 import kotlinx.coroutines.delay
 
 private const val QUESTION_COUNT = 8
@@ -98,82 +103,193 @@ fun QuizScreen(
         }
     }
 
+    val landscape = LocalWindowSize.current.isLandscape
+
     AppScaffold(title = "Quiz", onBack = onExit) { innerPadding ->
-        Column(
+        MaxWidthContainer(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(innerPadding),
         ) {
             when {
-                finished || question == null -> QuizResult(
-                    score = score,
-                    total = questions.size,
-                    onPlayAgain = { attempt++ },
-                    onHome = onExit,
-                )
-
-                else -> {
-                    Text(
-                        "Question ${index + 1} of ${questions.size}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text("Score: $score", style = MaterialTheme.typography.titleMedium)
-
-                    Spacer(Modifier.height(12.dp))
-                    LinearProgressIndicator(
-                        progress = { (timeLeftMs.toFloat() / totalMs).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    Spacer(Modifier.height(20.dp))
-                    ElevatedCard(Modifier.fillMaxWidth()) {
-                        Text(
-                            question.prompt,
-                            style = MaterialTheme.typography.headlineSmall,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                finished || question == null -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(LettieDimens.screenPadding),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        QuizResult(
+                            score = score,
+                            total = questions.size,
+                            onPlayAgain = { attempt++ },
+                            onHome = onExit,
                         )
                     }
+                }
 
-                    Spacer(Modifier.height(20.dp))
-                    question.options.forEach { option ->
-                        val revealed = selectedId != null
-                        val isAnswer = option.id == question.answerId
-                        val isChosen = option.id == selectedId
-                        val container = when {
-                            !revealed -> MaterialTheme.colorScheme.primaryContainer
-                            isAnswer -> MaterialTheme.colorScheme.tertiaryContainer
-                            isChosen -> MaterialTheme.colorScheme.errorContainer
-                            else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                        }
-                        Button(
-                            onClick = { answer(option.id) },
-                            enabled = !revealed,
-                            colors = ButtonDefaults.buttonColors(containerColor = container),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .height(64.dp),
+                landscape -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(LettieDimens.screenPadding),
+                    ) {
+                        QuizChrome(
+                            index = index,
+                            total = questions.size,
+                            score = score,
+                            timeLeftMs = timeLeftMs,
+                            totalMs = totalMs,
+                        )
+                        Spacer(Modifier.height(LettieDimens.spaceMd))
+                        AdaptiveSplit(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            dualPane = true,
+                            startWeight = 0.45f,
+                            endWeight = 0.55f,
+                            start = {
+                                ElevatedCard(
+                                    modifier = Modifier.fillMaxSize(),
+                                    shape = MaterialTheme.shapes.extraLarge,
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            question.prompt,
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                }
+                            },
+                            end = {
+                                QuizOptions(
+                                    question = question,
+                                    selectedId = selectedId,
+                                    onAnswer = ::answer,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            },
+                        )
+                    }
+                }
+
+                else -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = LettieDimens.screenPadding, vertical = LettieDimens.spaceSm),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        QuizChrome(
+                            index = index,
+                            total = questions.size,
+                            score = score,
+                            timeLeftMs = timeLeftMs,
+                            totalMs = totalMs,
+                        )
+                        Spacer(Modifier.height(LettieDimens.spaceLg))
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.extraLarge,
                         ) {
-                            Text(option.emoji, fontSize = 28.sp)
-                            Spacer(Modifier.width(12.dp))
                             Text(
-                                option.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                question.prompt,
+                                style = MaterialTheme.typography.headlineSmall,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
                             )
                         }
+                        Spacer(Modifier.height(LettieDimens.spaceLg))
+                        QuizOptions(
+                            question = question,
+                            selectedId = selectedId,
+                            onAnswer = ::answer,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun QuizChrome(
+    index: Int,
+    total: Int,
+    score: Int,
+    timeLeftMs: Int,
+    totalMs: Int,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Question ${index + 1} of $total",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text("Score: $score", style = MaterialTheme.typography.titleMedium)
+    }
+    Spacer(Modifier.height(8.dp))
+    LinearProgressIndicator(
+        progress = { (timeLeftMs.toFloat() / totalMs).coerceIn(0f, 1f) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(8.dp),
+    )
+}
+
+@Composable
+private fun QuizOptions(
+    question: QuizQuestion,
+    selectedId: String?,
+    onAnswer: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
+    ) {
+        question.options.forEach { option ->
+            val revealed = selectedId != null
+            val isAnswer = option.id == question.answerId
+            val isChosen = option.id == selectedId
+            val container = when {
+                !revealed -> MaterialTheme.colorScheme.primaryContainer
+                isAnswer -> MaterialTheme.colorScheme.tertiaryContainer
+                isChosen -> MaterialTheme.colorScheme.errorContainer
+                else -> MaterialTheme.colorScheme.surfaceContainerHighest
+            }
+            Button(
+                onClick = { onAnswer(option.id) },
+                enabled = !revealed,
+                colors = ButtonDefaults.buttonColors(containerColor = container),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(LettieDimens.primaryCtaHeight),
+            ) {
+                Text(option.emoji, fontSize = 28.sp)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    option.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun QuizResult(
