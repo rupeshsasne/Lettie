@@ -233,7 +233,19 @@ fun FlashcardsScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("No cards here yet.", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = when {
+                                practiceLetter != null && selectedRoundNames.isNotEmpty() ->
+                                    "No ${selectedRoundNames.mapNotNull { name ->
+                                        Round.entries.find { it.name == name }?.displayName
+                                    }.joinToString(" / ")} words start with $practiceLetter yet."
+                                practiceLetter != null ->
+                                    "No words start with $practiceLetter in this filter."
+                                else -> "No cards here yet."
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     return@Column
                 }
@@ -466,11 +478,8 @@ private fun varietyDeck(
 ): List<Word> {
     var words = repo.all.filter { it.category in categories }
     if (focusLetter != null) {
-        val focused = words.filter { it.firstLetter.equals(focusLetter, ignoreCase = true) }
-        // If the game categories are thin for that letter, widen to the whole bank.
-        words = focused.ifEmpty {
-            repo.all.filter { it.firstLetter.equals(focusLetter, ignoreCase = true) }
-        }
+        // Keep the active round/category filter — never leak Round 2 cities into Round 1 practice.
+        words = words.filter { it.firstLetter.equals(focusLetter, ignoreCase = true) }
         return words.shuffled(random).sortedBy { exposure(it.id) }
     }
     if (words.isEmpty()) return emptyList()

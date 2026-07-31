@@ -98,9 +98,53 @@ class GameLogicTest {
     @Test
     fun wordBankIsAboutFiveHundred() {
         assertTrue(
-            WordData.all.size in 480..520,
+            WordData.all.size in 480..540,
             "Expected ~500 words, was ${WordData.all.size}",
         )
+    }
+
+    @Test
+    fun round1HasUStartersForPracticeAndPlay() {
+        val starters = repo.startingWith('U', Round.ROUND_1.categories, emptySet())
+        assertTrue(starters.isNotEmpty(), "Round 1 needs U-starters so Practice U stays in-round")
+        assertTrue(
+            starters.none { it.category == Category.CITY || it.category == Category.COUNTRY },
+            "Round 1 U practice must not include cities/countries",
+        )
+    }
+
+    @Test
+    fun lettieAvoidsHandingDeadEndLettersOnHard() {
+        val session = GameSession(
+            repo = repo,
+            round = Round.ROUND_1,
+            activeCategories = Round.ROUND_1.categories,
+            difficulty = Difficulty.HARD,
+            lettieStarts = false,
+        )
+        val cats = Round.ROUND_1.categories
+        session.start()
+        repeat(20) {
+            val childWord = repo.startingWith(session.requiredLetter, cats, session.playedIds)
+                .firstOrNull() ?: return
+            session.submitChild(childWord.name)
+
+            val before = session.playedIds.toSet()
+            val lettieCandidates = repo.startingWith(session.requiredLetter, cats, before)
+            val lettieHadSafeOption = lettieCandidates.any { cand ->
+                repo.all.any {
+                    it.category in cats && it.id != cand.id && it.id !in before &&
+                        it.firstLetter.equals(cand.lastLetter, ignoreCase = true)
+                }
+            }
+            val played = session.lettieTurn() ?: return
+            if (!lettieHadSafeOption) return@repeat
+            val childCanReply = repo.startingWith(played.lastLetter, cats, session.playedIds).isNotEmpty()
+            assertTrue(
+                childCanReply,
+                "Hard Lettie played ${played.name} ending '${played.lastLetter}' with 0 Round 1 replies",
+            )
+        }
     }
 
     @Test

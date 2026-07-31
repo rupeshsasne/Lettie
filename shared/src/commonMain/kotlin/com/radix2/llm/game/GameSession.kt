@@ -125,11 +125,8 @@ class GameSession(
     private fun pickLettieOpener(): Word? {
         val pool = repo.all.filter { it.category in activeCategories && it.difficulty == Difficulty.EASY }
             .ifEmpty { repo.all.filter { it.category in activeCategories } }
-        val candidates = if (difficulty != Difficulty.HARD) {
-            pool.filter { hasReplyFor(it) }.ifEmpty { pool }
-        } else {
-            pool
-        }
+        // Prefer openers the child can answer — even Hard shouldn't start on a dead letter.
+        val candidates = pool.filter { hasReplyFor(it) }.ifEmpty { pool }
         if (candidates.isEmpty()) return null
         return if (difficulty == Difficulty.HARD) {
             // Hard opener: steer toward the child's weaker ending letters.
@@ -243,7 +240,13 @@ class GameSession(
         }
         val pool = preferred.ifEmpty { candidates }
         return when (difficulty) {
-            Difficulty.HARD -> pickAdversarial(pool)!!
+            Difficulty.HARD -> {
+                // Tighten replies, but don't trap the child on a letter with zero answers
+                // when a playable move still exists (e.g. Round 1 ending in U).
+                val safe = pool.filter { hasReplyFor(it) }
+                    .ifEmpty { candidates.filter { hasReplyFor(it) } }
+                pickAdversarial(safe.ifEmpty { pool })!!
+            }
             Difficulty.MEDIUM -> {
                 val safe = pool.filter { hasReplyFor(it) }.ifEmpty { candidates.filter { hasReplyFor(it) } }
                 // Late game: mild pressure on weak letters while still leaving replies.

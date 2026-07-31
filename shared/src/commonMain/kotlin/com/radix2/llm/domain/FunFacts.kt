@@ -316,6 +316,10 @@ object FunFacts {
             "A turtle's shell is part of its body!",
             "Olive ridley turtles nest on Indian beaches.",
         ),
+        "animal_urchin" to listOf(
+            "Sea urchins look like spiky little balls on the reef.",
+            "They munch on algae and help keep the sea clean.",
+        ),
         "animal_weasel" to listOf(
             "Weasels are skinny enough to chase mice into holes.",
             "They zip around with boundless energy.",
@@ -630,6 +634,10 @@ object FunFacts {
         "bird_turkey" to listOf(
             "Wild turkeys can fly short distances!",
             "They gobble and puff up for fancy shows.",
+        ),
+        "bird_umbrellabird" to listOf(
+            "Umbrellabirds have a fluffy crest like a tiny umbrella!",
+            "They live in rainforests and boom with deep calls.",
         ),
         "bird_vulture" to listOf(
             "Vultures clean nature by eating leftovers!",
@@ -1874,6 +1882,10 @@ object FunFacts {
             "Tangerines peel easier than big oranges.",
             "They're named after the city of Tangier.",
         ),
+        "fruit_ugli" to listOf(
+            "Ugli fruit is a tangy mix of grapefruit, orange, and tangerine.",
+            "Its bumpy peel looks rough, but the inside is juicy!",
+        ),
         "fruit_watermelon" to listOf(
             "Watermelons are over 90% water!",
             "Some are so big you need two hands.",
@@ -2065,6 +2077,10 @@ object FunFacts {
         "vegetable_turnip" to listOf(
             "Turnips have peppery white or purple roots.",
             "People eat both the root and leafy tops.",
+        ),
+        "vegetable_ube" to listOf(
+            "Ube is a bright purple yam used in ice cream and cakes.",
+            "It's popular in Filipino desserts and tastes gently sweet.",
         ),
         "vegetable_yam" to listOf(
             "Yams are starchy tropical tubers.",

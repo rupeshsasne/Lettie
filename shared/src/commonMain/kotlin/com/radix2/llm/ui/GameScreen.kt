@@ -549,7 +549,9 @@ fun GameScreen(
     if (session.status == GameStatus.CHILD_WON || session.status == GameStatus.LETTIE_WON) {
         val childWon = session.status == GameStatus.CHILD_WON
         val stuckLetter = session.requiredLetter.uppercaseChar()
-        val canPractice = !childWon && stuckLetter.isLetter() && onPracticeLetter != null
+        val practiceAvailable = stuckLetter.isLetter() &&
+            repo.startingWith(stuckLetter, session.activeCategories, emptySet()).isNotEmpty()
+        val canPractice = !childWon && practiceAvailable && onPracticeLetter != null
         AlertDialog(
             onDismissRequest = { },
             title = { Text(if (childWon) "You won!" else "Good try!") },
@@ -561,6 +563,11 @@ fun GameScreen(
                     if (canPractice) {
                         Text(
                             "You got stuck on $stuckLetter. Practice a few $stuckLetter-words, then try again!",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (!childWon && stuckLetter.isLetter() && !practiceAvailable) {
+                        Text(
+                            "You got stuck on $stuckLetter — that letter is rare in this round. Play again for a fresh chain!",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
