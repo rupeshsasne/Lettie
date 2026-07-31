@@ -32,41 +32,40 @@ fun VoiceSettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = LettieDimens.screenPadding),
-        ) {
-            Text(
-                text = "System voices · Soft · Indian English",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Pick a voice installed on this phone. Soft style is always on.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(16.dp))
-
-            FilledTonalButton(
-                onClick = {
-                    voice.speak("Hi, I'm Lettie! Let's play word chains.")
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = LettieDimens.screenPadding),
             ) {
-                Text("Preview Lettie", style = MaterialTheme.typography.titleMedium)
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            if (voice.availableVoices.isEmpty()) {
                 Text(
-                    text = "Loading voices… If none appear, install an Indian English voice in your phone's Text-to-speech settings.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "Lettie uses Indian English voices from your phone. Pick the one that sounds best.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
+
+                if (voice.availableVoices.isEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "No Indian English (en-IN) voice found. Install “English (India)” in your phone’s Text-to-speech settings, then reopen this screen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                FilledTonalButton(
+                    onClick = {
+                        voice.speak("Hi, I'm Lettie! Let's play word chains.")
+                    },
+                    enabled = voice.availableVoices.isNotEmpty() || voice.selectedVoiceId != null,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) {
+                    Text("Preview Lettie", style = MaterialTheme.typography.titleMedium)
+                }
+
+                Spacer(Modifier.height(16.dp))
+
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -76,17 +75,14 @@ fun VoiceSettingsScreen(
                             selected = option.id == voice.selectedVoiceId,
                             onClick = {
                                 voice.selectVoice(option.id)
-                                voice.speak("Hi! This is my ${option.localeTag} voice.")
+                                voice.speak("Hi! This is my ${option.displayName} voice.")
                             },
-                            label = {
-                                Text(option.displayName)
-                            },
+                            label = { Text(option.displayName) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }
             }
-        }
         }
     }
 }

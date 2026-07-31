@@ -25,6 +25,9 @@ private const val SoftPitch = 1.12f
 
 private val PreferredLocale: Locale = Locale.forLanguageTag("en-IN")
 
+/** Legacy Piper id — ignore if still stored in prefs. */
+private const val LegacyPiperVoiceId = "lettie_piper"
+
 @Composable
 actual fun rememberVoiceController(
     preferredVoiceId: String?,
@@ -35,7 +38,7 @@ actual fun rememberVoiceController(
     val controller = remember {
         AndroidVoiceController(
             appContext = context.applicationContext,
-            initialVoiceId = preferredVoiceId,
+            initialVoiceId = preferredVoiceId?.takeUnless { it == LegacyPiperVoiceId },
             onVoiceSelected = { onSelected(it) },
         )
     }
@@ -46,9 +49,8 @@ actual fun rememberVoiceController(
 }
 
 /**
- * Android voice implementation.
- * - Speech: system [TextToSpeech] voices, preferring en-IN, Soft rate/pitch.
- * - Listening: [SpeechRecognizer] with en-IN, returning multiple candidates.
+ * Android voice implementation — Indian English system TTS only.
+ * Listening: [SpeechRecognizer] with en-IN.
  */
 class AndroidVoiceController(
     private val appContext: Context,
@@ -105,7 +107,7 @@ class AndroidVoiceController(
 
     override fun selectVoice(id: String) {
         preferredVoiceId = id
-        val voice = tts.voices?.firstOrNull { it.name == id } ?: return
+        val voice = tts.voices?.firstOrNull { it.name == id && it.isEnIn() } ?: return
         tts.voice = voice
         selectedVoiceId = id
         applySoftStyle()
@@ -115,10 +117,8 @@ class AndroidVoiceController(
     private fun configureLanguage() {
         val result = tts.setLanguage(PreferredLocale)
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            val us = tts.setLanguage(Locale.US)
-            if (us == TextToSpeech.LANG_MISSING_DATA || us == TextToSpeech.LANG_NOT_SUPPORTED) {
-                tts.language = Locale.ENGLISH
-            }
+            // Keep en-IN as the request; engine may still expose en-IN voices later.
+            tts.language = PreferredLocale
         }
     }
 
@@ -129,26 +129,31 @@ class AndroidVoiceController(
 
     private fun refreshVoicesAndSelect() {
         val all = tts.voices.orEmpty()
-        val enIn = all.filter { it.isEnIn() }
-        val english = all.filter { it.locale.language.equals("en", ignoreCase = true) }
-        val pool = (enIn.ifEmpty { english }).toList()
+        rebuildAvailableVoices(all)
 
-        availableVoices = pool
-            .sortedWith(voicePreferenceComparator())
-            .map { it.toOption() }
-            .distinctBy { it.id }
-
+        val pool = all.filter { it.isEnIn() }
         val preferred = preferredVoiceId?.let { id -> pool.firstOrNull { it.name == id } }
         val chosen = preferred ?: pool.minWithOrNull(voicePreferenceComparator())
         if (chosen != null) {
             tts.voice = chosen
             selectedVoiceId = chosen.name
-            if (preferredVoiceId == null) {
+            if (preferredVoiceId == null || preferredVoiceId != chosen.name) {
                 preferredVoiceId = chosen.name
                 onVoiceSelected(chosen.name)
             }
+        } else {
+            selectedVoiceId = null
+            tts.language = PreferredLocale
         }
         applySoftStyle()
+    }
+
+    private fun rebuildAvailableVoices(all: Collection<Voice>) {
+        availableVoices = all
+            .filter { it.isEnIn() }
+            .sortedWith(voicePreferenceComparator())
+            .map { it.toOption() }
+            .distinctBy { it.id }
     }
 
     override fun speak(text: String, onDone: () -> Unit) {
@@ -258,12 +263,7 @@ private fun Voice.toOption(): TtsVoiceOption {
     )
 }
 
-/**
- * Prefer: en-IN → higher quality → not explicitly male → installed → stable name.
- * Soft style is applied via pitch/rate; we still bias toward friendlier voice names.
- */
 private fun voicePreferenceComparator(): Comparator<Voice> = compareBy(
-    { if (it.isEnIn()) 0 else 1 },
     { -it.quality },
     { if (it.nameContains("female") || it.nameContains("woman") || it.nameContains("girl")) 0 else 1 },
     { if (it.nameContains("male") || it.nameContains("man") || it.nameContains("boy")) 2 else 0 },

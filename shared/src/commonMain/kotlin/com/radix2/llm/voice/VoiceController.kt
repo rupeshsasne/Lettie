@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
-/** A system TTS voice the child/parent can pick for Lettie. */
+/** A TTS voice the child/parent can pick for Lettie. */
 data class TtsVoiceOption(
     val id: String,
     val displayName: String,
@@ -13,8 +13,8 @@ data class TtsVoiceOption(
 
 /**
  * Voice abstraction so game/UI code stays platform-agnostic. Android provides the
- * concrete implementation (TextToSpeech + SpeechRecognizer). [isSpeaking]/[isListening]
- * are Compose snapshot state, so composables reading them recompose automatically.
+ * concrete implementation (TextToSpeech + SpeechRecognizer), Indian English only.
+ * [isSpeaking]/[isListening] are Compose snapshot state.
  */
 interface VoiceController {
     val isSpeaking: Boolean
@@ -23,10 +23,10 @@ interface VoiceController {
     /** Whether speech recognition is usable on this device right now. */
     val recognitionAvailable: Boolean
 
-    /** Installed en-IN (or English) system voices available for Lettie. */
+    /** Installed en-IN system voices. */
     val availableVoices: List<TtsVoiceOption>
 
-    /** Currently selected system voice id, or null while TTS is still loading. */
+    /** Currently selected voice id, or null while TTS is still loading. */
     val selectedVoiceId: String?
 
     fun selectVoice(id: String)
