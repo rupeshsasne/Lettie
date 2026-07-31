@@ -1,7 +1,6 @@
 package com.radix2.llm.game
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.radix2.llm.data.WordRepository
@@ -39,7 +38,9 @@ class GameSession(
     /** Relative strength on a starter letter; lower = weaker vocabulary for that letter. */
     private val childLetterStrength: (Char) -> Int = { 0 },
 ) {
-    val chain = mutableStateListOf<ChainEntry>()
+    /** Immutable snapshot list so we avoid SnapshotStateList (Parcelable) in commonMain. */
+    var chain by mutableStateOf<List<ChainEntry>>(emptyList())
+        private set
 
     var requiredLetter by mutableStateOf(' ')
         private set
@@ -80,7 +81,7 @@ class GameSession(
     fun start(): Word? {
         if (hasBegun) return lastWord
         hasBegun = true
-        chain.clear()
+        chain = emptyList()
         usedIds.clear()
         status = GameStatus.PLAYING
         retriesLeft = difficulty.retries
@@ -151,7 +152,7 @@ class GameSession(
     }
 
     private fun play(word: Word, speaker: Speaker) {
-        chain.add(ChainEntry(word, speaker))
+        chain = chain + ChainEntry(word, speaker)
         usedIds.add(word.id)
         requiredLetter = word.lastLetter
         if (speaker == Speaker.CHILD) childWordCount++

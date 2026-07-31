@@ -67,24 +67,25 @@ fun App() {
             var gameSession by remember { mutableStateOf<GameSession?>(null) }
 
             // Critical: back stack must be saveable — otherwise rotate = brand-new app.
-            val backStack = rememberSaveable(saver = Screen.BackStackSaver) {
-                androidx.compose.runtime.mutableStateListOf<Screen>(Screen.Home)
+            // Use List + reassignment (not SnapshotStateList) to avoid IDE Parcelable warnings in commonMain.
+            var backStack by rememberSaveable(stateSaver = Screen.BackStackSaver) {
+                mutableStateOf(listOf<Screen>(Screen.Home))
             }
             val current = backStack.last()
             val saveableStateHolder = rememberSaveableStateHolder()
             val window = LocalWindowSize.current
 
-            fun navigate(screen: Screen) { backStack.add(screen) }
-            fun back() { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
+            fun navigate(screen: Screen) { backStack = backStack + screen }
+            fun back() {
+                if (backStack.size > 1) backStack = backStack.dropLast(1)
+            }
             fun home() {
                 gameSession = null
-                backStack.clear()
-                backStack.add(Screen.Home)
+                backStack = listOf(Screen.Home)
             }
             fun goPrimary(screen: Screen) {
                 gameSession = null
-                backStack.clear()
-                backStack.add(screen)
+                backStack = listOf(screen)
             }
 
             fun onDestinationSelected(dest: LettieDestination) {

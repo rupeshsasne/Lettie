@@ -2,8 +2,6 @@ package com.radix2.llm.navigation
 
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.toMutableStateList
 import com.radix2.llm.domain.Category
 
 /** App navigation destinations — encode/decode for configuration-change survival. */
@@ -77,12 +75,11 @@ sealed interface Screen {
             }
         }
 
-        val BackStackSaver: Saver<SnapshotStateList<Screen>, Any> = listSaver(
+        /** Plain [List] saver — avoids SnapshotStateList (Android Parcelable) in commonMain. */
+        val BackStackSaver: Saver<List<Screen>, Any> = listSaver(
             save = { stack -> stack.map { it.encode() } },
             restore = { encoded ->
-                encoded.map { decode(it.toString()) }
-                    .ifEmpty { listOf(Home) }
-                    .toMutableStateList()
+                encoded.map { decode(it.toString()) }.ifEmpty { listOf(Home) }
             },
         )
     }
