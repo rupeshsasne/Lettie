@@ -120,6 +120,7 @@ fun GameScreen(
         sound.correct()
         confetti++
         val firstTime = progress.noteChildPlayed(word.id)
+        progress.noteLetterSuccess(word.firstLetter)
         val line = if (firstTime) {
             "Wow, a new word! ${word.name}!"
         } else {
@@ -149,6 +150,7 @@ fun GameScreen(
                         }
                         is SubmitResult.WrongLetter -> {
                             sound.wrong()
+                            progress.noteLetterMiss(r.required)
                             childFeedback = "${r.word.name} starts with ${r.word.firstLetter}. Need ${r.required}!"
                             session.consumeRetry()
                             scope.launch {
@@ -259,6 +261,7 @@ fun GameScreen(
             session.status == GameStatus.PLAYING &&
             session.whoseTurn == Speaker.CHILD
         ) {
+            progress.noteLetterStuck(session.requiredLetter)
             session.childStuck()
             caption = "Time's up! Good try."
             scope.launch { voice.speakAwait("Time is up! Good try!") }
@@ -418,6 +421,7 @@ fun GameScreen(
                                             }
                                             is SubmitResult.WrongLetter -> {
                                                 sound.wrong()
+                                                progress.noteLetterMiss(r.required)
                                                 childFeedback =
                                                     "${r.word.name} starts with ${r.word.firstLetter}. Need ${r.required}!"
                                                 session.consumeRetry()
@@ -485,6 +489,7 @@ fun GameScreen(
                         ) {
                             FilledTonalButton(
                                 onClick = {
+                                    progress.noteLetterHint(session.requiredLetter)
                                     val hint = session.hintWord()
                                     childFeedback = if (hint != null) {
                                         scope.launch {

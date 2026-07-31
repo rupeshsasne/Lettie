@@ -213,6 +213,7 @@ fun App() {
                                         activeCategories = categories,
                                         difficulty = difficulty,
                                         childPlayCount = { progress.playCount(it) },
+                                        childLetterStrength = { progress.letterStrength(it) },
                                     )
                                     navigate(Screen.Game)
                                 },

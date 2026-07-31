@@ -8,8 +8,8 @@ import androidx.compose.runtime.setValue
  * Player progress (games, wins, streaks, best chain, words learned, quiz best), persisted
  * via [KeyValueStore]. All fields are Compose snapshot state so the dashboard updates live.
  *
- * Also tracks how often the child has *said* each word and how often they've *studied*
- * it in flashcards — used to nudge variety without banning favorites.
+ * Also tracks word exposure and per-letter strength so Lettie can challenge weak letters
+ * on Hard without needing a trained model.
  */
 class ProgressStore(private val store: KeyValueStore) {
 
@@ -23,6 +23,8 @@ class ProgressStore(private val store: KeyValueStore) {
 
     private var playCounts by mutableStateOf(loadCounts(K_PLAY_COUNTS))
     private var studyCounts by mutableStateOf(loadCounts(K_STUDY_COUNTS))
+    /** Higher = child is stronger on that letter. Clamped; starts at 0. */
+    private var letterScores by mutableStateOf(loadCounts(K_LETTER_SCORES))
     private var lastPlayedDay = store.getLong(K_LAST_DAY, -1L)
 
     val wordsLearnedCount: Int get() = wordsLearned.size
@@ -32,6 +34,13 @@ class ProgressStore(private val store: KeyValueStore) {
 
     /** Combined exposure (spoken + flashcards) — lower means “fresher” for the child. */
     fun exposure(id: String): Int = playCount(id) + (studyCounts[id] ?: 0)
+
+    /** Relative strength on a starter letter (A–Z). Higher means more confident. */
+    fun letterStrength(letter: Char): Int {
+        val key = letter.uppercaseChar()
+        if (!key.isLetter()) return 0
+        return letterScores[key.toString()] ?: 0
+    }
 
     /**
      * Record that the child just said [id] correctly.
@@ -45,11 +54,22 @@ class ProgressStore(private val store: KeyValueStore) {
         return firstTime
     }
 
+    fun noteLetterSuccess(letter: Char) = adjustLetter(letter, +2)
+
+    fun noteLetterStuck(letter: Char) = adjustLetter(letter, -4)
+
+    fun noteLetterMiss(letter: Char) = adjustLetter(letter, -2)
+
+    fun noteLetterHint(letter: Char) = adjustLetter(letter, -1)
+
+    fun noteLetterPractice(letter: Char) = adjustLetter(letter, +1)
+
     /** Record that the child viewed this word in flashcards. */
-    fun noteStudied(id: String) {
+    fun noteStudied(id: String, practiceLetter: Char? = null) {
         studyCounts = studyCounts + (id to (studyCounts[id] ?: 0) + 1)
         store.putString(K_STUDY_COUNTS, encodeCounts(studyCounts))
         addLearned(listOf(id))
+        practiceLetter?.let { noteLetterPractice(it) }
     }
 
     /** Record the end of a game against Lettie. [learnedIds] are words the child played correctly. */
@@ -83,6 +103,7 @@ class ProgressStore(private val store: KeyValueStore) {
         wordsLearned = emptySet()
         playCounts = emptyMap()
         studyCounts = emptyMap()
+        letterScores = emptyMap()
         lastPlayedDay = -1L
         store.putInt(K_GAMES, 0)
         store.putInt(K_WON, 0)
@@ -93,7 +114,16 @@ class ProgressStore(private val store: KeyValueStore) {
         store.putString(K_LEARNED, "")
         store.putString(K_PLAY_COUNTS, "")
         store.putString(K_STUDY_COUNTS, "")
+        store.putString(K_LETTER_SCORES, "")
         store.putLong(K_LAST_DAY, -1L)
+    }
+
+    private fun adjustLetter(letter: Char, delta: Int) {
+        val key = letter.uppercaseChar()
+        if (!key.isLetter()) return
+        val next = (letterStrength(key) + delta).coerceIn(LETTER_SCORE_MIN, LETTER_SCORE_MAX)
+        letterScores = letterScores + (key.toString() to next)
+        store.putString(K_LETTER_SCORES, encodeCounts(letterScores))
     }
 
     private fun updateStreak() {
@@ -150,6 +180,9 @@ class ProgressStore(private val store: KeyValueStore) {
         private const val K_LEARNED = "words_learned"
         private const val K_PLAY_COUNTS = "word_play_counts"
         private const val K_STUDY_COUNTS = "word_study_counts"
+        private const val K_LETTER_SCORES = "letter_strength_scores"
         private const val K_LAST_DAY = "last_played_day"
+        private const val LETTER_SCORE_MIN = -20
+        private const val LETTER_SCORE_MAX = 20
     }
 }

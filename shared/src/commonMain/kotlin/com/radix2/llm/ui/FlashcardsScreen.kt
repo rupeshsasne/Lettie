@@ -123,7 +123,9 @@ fun FlashcardsScreen(
     val studiedThisVisit = remember(sessionSeed) { mutableSetOf<String>() }
     LaunchedEffect(card?.id) {
         val id = card?.id ?: return@LaunchedEffect
-        if (studiedThisVisit.add(id)) progressStore.noteStudied(id)
+        if (studiedThisVisit.add(id)) {
+            progressStore.noteStudied(id, practiceLetter = practiceLetter)
+        }
     }
     LaunchedEffect(practiceLetter) {
         if (practiceLetter != null) {

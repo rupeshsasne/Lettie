@@ -184,6 +184,62 @@ class GameLogicTest {
     }
 
     @Test
+    fun hardLettieTargetsChildWeakEndingLetters() {
+        val cats = listOf(Category.ANIMAL)
+        // Force equal branching so letter strength decides: plant a fake weakness on one letter.
+        val strengths = mutableMapOf<Char, Int>()
+        // Make every letter strong except the one that appears most as an Easy animal ending.
+        val animalEndings = repo.all
+            .filter { it.category == Category.ANIMAL }
+            .groupingBy { it.lastLetter.uppercaseChar() }
+            .eachCount()
+        val weakLetter = animalEndings.maxByOrNull { it.value }!!.key
+        ('A'..'Z').forEach { strengths[it] = 10 }
+        strengths[weakLetter] = -10
+
+        val session = GameSession(
+            repo = repo,
+            round = Round.ROUND_1,
+            activeCategories = cats,
+            difficulty = Difficulty.HARD,
+            lettieStarts = false,
+            childLetterStrength = { strengths[it.uppercaseChar()] ?: 0 },
+        )
+        session.start()
+        // Give Lettie a turn from a letter with several animal options.
+        val starter = repo.startingWith(session.requiredLetter, cats, emptySet())
+            .firstOrNull { cand ->
+                repo.startingWith(cand.lastLetter, cats, setOf(cand.id)).size >= 2
+            } ?: repo.startingWith(session.requiredLetter, cats, emptySet()).first()
+        session.submitChild(starter.name)
+
+        val before = session.playedIds.toSet()
+        val candidates = repo.startingWith(session.requiredLetter, cats, before)
+        val minBranch = candidates.minOf { cand ->
+            repo.all.count {
+                it.category in cats && it.id != cand.id && it.id !in before &&
+                    it.firstLetter.equals(cand.lastLetter, ignoreCase = true)
+            }
+        }
+        val tightest = candidates.filter { cand ->
+            repo.all.count {
+                it.category in cats && it.id != cand.id && it.id !in before &&
+                    it.firstLetter.equals(cand.lastLetter, ignoreCase = true)
+            } == minBranch
+        }
+        // Among equally tight moves, prefer ending on the weak letter when available.
+        val weakEnds = tightest.filter { it.lastLetter.equals(weakLetter, ignoreCase = true) }
+        if (weakEnds.isEmpty()) return // no comparable choice this turn — skip
+
+        val played = assertNotNull(session.lettieTurn())
+        assertEquals(
+            weakLetter,
+            played.lastLetter.uppercaseChar(),
+            "Expected Hard Lettie to end on weak '$weakLetter', played ${played.name}",
+        )
+    }
+
+    @Test
     fun lettieOpenerVariesAmongStrongStarters() {
         fun opener(): Word {
             val session = GameSession(

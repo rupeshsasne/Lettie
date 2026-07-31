@@ -25,10 +25,8 @@ sealed interface SubmitResult {
  * Holds all state for one game against Lettie. Backed by Compose snapshot state so
  * the UI recomposes automatically. Rules are enforced strictly (real-contest style).
  *
- * Mid-game picks are branching-aware (QWERTY anti-jam) and gently biased toward
- * words the child has used less often across games ([childPlayCount]).
- * The opening word is chosen at random among several strong Easy starters so
- * every match doesn't begin the same way.
+ * Easy/Medium keep chains open. Hard minimizes bank replies *and* steers endings
+ * toward letters where [childLetterStrength] is low (learned opponent model).
  */
 class GameSession(
     private val repo: WordRepository,
@@ -38,6 +36,8 @@ class GameSession(
     private val lettieStarts: Boolean = true,
     /** How often the child has successfully said each word id (across games). */
     private val childPlayCount: (String) -> Int = { 0 },
+    /** Relative strength on a starter letter; lower = weaker vocabulary for that letter. */
+    private val childLetterStrength: (Char) -> Int = { 0 },
 ) {
     val chain = mutableStateListOf<ChainEntry>()
 
@@ -130,15 +130,24 @@ class GameSession(
             pool
         }
         if (candidates.isEmpty()) return null
-        // Vary the opener: random among a band of strong branching words (not a tiny
-        // elite of 1–2), preferring words the child hasn't leaned on yet.
-        val strong = candidates
-            .sortedByDescending { replyCountAfter(it) }
-            .take(12)
-            .ifEmpty { candidates }
-        val minUses = strong.minOf { childPlayCount(it.id) }
-        val fresh = strong.filter { childPlayCount(it.id) <= minUses }.ifEmpty { strong }
-        return fresh.random()
+        return if (difficulty == Difficulty.HARD) {
+            // Hard opener: steer toward the child's weaker ending letters.
+            val pressure = candidates.sortedWith(
+                compareBy<Word> { childLetterStrength(it.lastLetter) }
+                    .thenBy { replyCountAfter(it) }
+                    .thenBy { it.id },
+            ).take(8)
+            pressure.random()
+        } else {
+            // Easy/Medium: random among a band of strong branching words.
+            val strong = candidates
+                .sortedByDescending { replyCountAfter(it) }
+                .take(12)
+                .ifEmpty { candidates }
+            val minUses = strong.minOf { childPlayCount(it.id) }
+            val fresh = strong.filter { childPlayCount(it.id) <= minUses }.ifEmpty { strong }
+            fresh.random()
+        }
     }
 
     private fun play(word: Word, speaker: Speaker) {
@@ -233,10 +242,17 @@ class GameSession(
         }
         val pool = preferred.ifEmpty { candidates }
         return when (difficulty) {
-            Difficulty.HARD -> {
-                pickBest(pool, maximizeBranching = false)!!
+            Difficulty.HARD -> pickAdversarial(pool)!!
+            Difficulty.MEDIUM -> {
+                val safe = pool.filter { hasReplyFor(it) }.ifEmpty { candidates.filter { hasReplyFor(it) } }
+                // Late game: mild pressure on weak letters while still leaving replies.
+                if (chain.size >= 6) {
+                    pickSoftPressure(safe.ifEmpty { pool })!!
+                } else {
+                    pickBest(safe.ifEmpty { pool }, maximizeBranching = true)!!
+                }
             }
-            else -> {
+            Difficulty.EASY -> {
                 val safe = pool.filter { hasReplyFor(it) }.ifEmpty { candidates.filter { hasReplyFor(it) } }
                 pickBest(safe.ifEmpty { pool }, maximizeBranching = true)!!
             }
@@ -244,9 +260,37 @@ class GameSession(
     }
 
     /**
-     * Stable pick: primary key is branching left for the child (max on Easy/Medium,
-     * min on Hard), then difficulty rank, then how often the child has used the word
-     * (prefer fresher), then word id.
+     * Hard: minimize bank replies, then target the child's weakest ending letter.
+     */
+    private fun pickAdversarial(candidates: List<Word>): Word? {
+        if (candidates.isEmpty()) return null
+        return candidates.minWith(
+            compareBy<Word>(
+                { replyCountAfter(it) },
+                { childLetterStrength(it.lastLetter) },
+                { difficultyRank(it.difficulty) },
+                { it.id },
+            ),
+        )
+    }
+
+    /**
+     * Medium late-game: keep a reply available, but prefer slightly tighter / weaker letters.
+     */
+    private fun pickSoftPressure(candidates: List<Word>): Word? {
+        if (candidates.isEmpty()) return null
+        return candidates.minWith(
+            compareBy<Word>(
+                { replyCountAfter(it).coerceAtMost(6) },
+                { childLetterStrength(it.lastLetter) },
+                { difficultyRank(it.difficulty) },
+                { it.id },
+            ),
+        )
+    }
+
+    /**
+     * Coach pick: maximize branching, then difficulty rank, fresher words, id.
      */
     private fun pickBest(candidates: List<Word>, maximizeBranching: Boolean = true): Word? {
         if (candidates.isEmpty()) return null
