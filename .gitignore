@@ -5,6 +5,10 @@
 xcuserdata
 !src/**/build/
 local.properties
+# Other keystores stay private; the committed Lettie release key is tracked below.
+*.jks
+*.keystore
+!androidApp/keystore/lettie-release.jks
 .idea
 .DS_Store
 captures
